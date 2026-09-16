@@ -201,3 +201,10 @@ python -m venv .venv
 ## Licencia
 
 MIT. Ver `AUTHORS.md` para creditos de los proyectos originales.
+
+---
+
+## Contacto
+
+- Pagina: [sammideblas.com](https://sammideblas.com)
+- Email: analista@sammideblas.com
