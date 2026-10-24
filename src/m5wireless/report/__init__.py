@@ -9,18 +9,22 @@ from __future__ import annotations
 
 from .context import ReportContext, build_context
 from .evidence import build_evidence, verify_evidence, write_evidence
+from .findings_csv import CSV_COLUMNS, findings_csv, write_findings_csv
 from .html import render_html
 from .markdown import render_markdown
 from .writer import FORMATS, write_report
 
 __all__ = [
+    "CSV_COLUMNS",
     "FORMATS",
     "ReportContext",
     "build_context",
     "build_evidence",
+    "findings_csv",
     "render_html",
     "render_markdown",
     "verify_evidence",
     "write_evidence",
+    "write_findings_csv",
     "write_report",
 ]

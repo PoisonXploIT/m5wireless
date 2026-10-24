@@ -28,11 +28,13 @@ from fastapi.responses import Response, StreamingResponse
 from ..findings.engine import context_from_store, evaluate_session
 from ..findings.registry import CATALOG_VERSION
 from ..models import (
+    Finding,
     ObservationEvent,
     Session,
     normalize_mac,
 )
 from ..report import build_context, verify_evidence, write_evidence, write_report
+from ..report.findings_csv import findings_csv
 from ..report.writer import FORMATS
 from ..session import close_session, get_live_session
 from ..store.base import AbstractStore, ObservationRow
@@ -778,12 +780,35 @@ def close_session_endpoint(
     store: AbstractStore = Depends(get_store),
     root: Path = Depends(get_sessions_root),
 ) -> SessionRead:
-    """Cerrar la sesion: evalua el catalogo, escribe informe y evidencia."""
+    """Cerrar la sesion: evalua el catalogo, escribe informe y evidencia.
+
+    Si hay webhook configurado (`M5W_WEBHOOK_URL` / `M5W_DISCORD_WEBHOOK`),
+    se envia `session.closed`. El envio no puede romper el cierre: un fallo
+    se registra como aviso.
+    """
     _get_session_or_404(store, session_id)
     evaluate_session(store, context_from_store(store, session_id))
     closed = close_session(store, session_id, root=root)
     write_report(root / session_id, build_context(store, session_id))
+    # El webhook informa de TODOS los hallazgos de la sesion, no solo de los
+    # creados en esta evaluacion (una reevaluacion no duplica hallazgos).
+    notify_session_closed(closed, store.list_findings(session_id=session_id))
     return session_read(closed)
+
+
+def notify_session_closed(session: Session, findings: list[Finding]) -> dict[str, object]:
+    """Enviar `session.closed` al webhook configurado, si lo hay."""
+    from ..exporter.webhook import WebhookNotifier, resolve_webhook_config
+
+    config = resolve_webhook_config()
+    if config is None:
+        return {"sent": False, "detail": "no hay webhook configurado"}
+    notifier = WebhookNotifier(config)
+    try:
+        result = notifier.notify_session_closed(session, findings, CATALOG_VERSION)
+    finally:
+        notifier.close()
+    return {"sent": bool(result.get("ok")), "detail": result.get("detail")}
 
 
 @router.get("/api/sessions/{session_id}/findings", response_model=FindingListResponse)
@@ -799,6 +824,23 @@ def session_findings(
         findings=[finding_read(f) for f in findings],
         total=len(findings),
         catalog_version=CATALOG_VERSION,
+    )
+
+
+@router.get("/api/sessions/{session_id}/findings.csv")
+def session_findings_csv(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    severidad: str | None = Query(None),
+    estado: str | None = Query(None),
+) -> Response:
+    """Hallazgos de la sesion en CSV (una fila por hallazgo)."""
+    _get_session_or_404(store, session_id)
+    findings = store.list_findings(session_id=session_id, severidad=severidad, estado=estado)
+    return Response(
+        content=findings_csv(findings),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="findings-{session_id}.csv"'},
     )
 
 

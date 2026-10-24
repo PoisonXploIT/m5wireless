@@ -1009,6 +1009,27 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   `scripts/responsive_check.js` a 390 px: `scrollWidth` 390, 0 elementos
   desbordados fuera de contenedores con scroll. 10 tests nuevos
   (`tests/test_web_assessment.py`) y 363 passed en total.
+- **Paso 6 (COMPLETO, 2026-10-24)**: integraciones y demo.
+  - `src/m5wireless/exporter/webhook.py`: `session.closed` con allowlist
+    (`http` solo loopback, `https` con `M5W_WEBHOOK_ALLOWED_HOSTS`), payloads
+    `generic` y `discord` (embed por hallazgo, orden por severidad, limites de
+    Discord), reintentos y tolerancia a fallos. La URL sale de `--webhook`,
+    `M5W_WEBHOOK_URL` o `M5W_DISCORD_WEBHOOK`; la clave de Discord esta solo en
+    la variable de entorno del usuario, no en el repo.
+  - CSV de hallazgos: `report/findings_csv.py`, CLI `m5wireless findings
+    --session --output` y `close --csv`, endpoint
+    `GET /api/sessions/{id}/findings.csv`.
+  - Demo reproducible: `m5wireless demo [--serve]` con fixture sintetic
+    empaquetado en `src/m5wireless/data/assessment_demo.json` (5 hallazgos,
+    informe MD/HTML y `findings.csv`). `Dockerfile` + `docker-compose.yml` +
+    `.dockerignore` levantan la demo en `http://localhost:8000`.
+  - Correccion: el webhook informa de TODOS los hallazgos de la sesion, no solo
+    de los creados en esa evaluacion (una reevaluacion no duplica hallazgos).
+  - 14 tests nuevos en `tests/test_webhook.py`, 2 en `tests/test_sessions_api.py`
+    (CSV y cierre con webhook contra un servidor loopback real) y 3 en
+    `tests/test_cli.py` (demo, close, export). Total: 382 passed, 2 skipped.
+  - `docs/integraciones.md` redactado. Docker no esta instalado en esta maquina,
+    la demo se verifico con `m5wireless demo` local.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

@@ -7,6 +7,7 @@ UI.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -251,3 +252,53 @@ def test_sqlite_store_works_through_the_api_threadpool(tmp_path) -> None:
         assert findings["total"] >= 1
         assert test_client.get(f"/api/sessions/{created['id']}/report?fmt=html").status_code == 200
     store.close()
+
+
+def test_close_sends_webhook_to_loopback_endpoint(client: TestClient, monkeypatch) -> None:
+    """Cierre de sesion -> `session.closed` al webhook, sin salir de la maquina."""
+    import http.server
+    import threading
+
+    received: list[dict] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            received.append(json.loads(self.rfile.read(length).decode("utf-8")))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_port
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("M5W_WEBHOOK_URL", f"http://127.0.0.1:{port}/hook")
+        created = client.post("/api/sessions", json={"nombre": "Webhook"}).json()
+        client.post(f"/api/sessions/{created['id']}/close")
+        assert len(received) == 1
+        assert received[0]["event"] == "session.closed"
+        assert received[0]["session"]["id"] == created["id"]
+        assert received[0]["source"] == "m5wireless"
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+
+
+def test_findings_csv_endpoint(client: TestClient) -> None:
+    created = client.post("/api/sessions", json={"nombre": "CSV"}).json()
+    client.post(f"/api/sessions/{created['id']}/close")
+    res = client.get(f"/api/sessions/{created['id']}/findings.csv")
+    assert res.status_code == 200
+    assert "text/csv" in res.headers["content-type"]
+    assert f'filename="findings-{created["id"]}.csv"' in res.headers["content-disposition"]
+    lines = res.text.splitlines()
+    assert lines[0] == (
+        "session_id,rule_id,rule_version,severidad,titulo,bssid,ssid,"
+        "client_mac,channel,evidencia,recomendacion,estado,creado"
+    )
+    assert len(lines) >= 2

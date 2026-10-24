@@ -41,7 +41,13 @@ es lo primero que se ve; el detalle se consulta bajo demanda.
 
 ```bash
 m5wireless report --session 20261024-demo --fmt md,html
+m5wireless close --session 20261024-demo --csv hallazgos.csv
+m5wireless findings --session 20261024-demo --output hallazgos.csv
+m5wireless demo --serve
 ```
+
+Las integraciones externas (webhooks, CSV para Splunk, demo Docker) estan en
+[docs/integraciones.md](integraciones.md).
 
 La CLI escribe en `data/sessions/<id>/` y devuelve `0` si la integridad de la
 evidencia se verifica, `1` si hay problemas (hashes que no coinciden, ficheros

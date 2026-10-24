@@ -1,19 +1,17 @@
-# m5wireless v3.0.0 — modo file por defecto (Docker = modo secundario; la captura
-# serial en vivo se documenta como host nativo, decision del plan).
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN pip install --no-cache-dir ".[serial,web,splunk]"
+RUN pip install --no-cache-dir ".[web]"
 
-# El log lo aporta el volumen; se crea vacio si no existe para que `run` arranque.
-VOLUME ["/data"]
+# La demo escribe aqui; se puede montar con docker compose (volumen ./data).
+ENV M5W_DB_PATH=/app/data/demo.db
+ENV M5W_UI_TOKEN=${M5W_UI_TOKEN}
+
 EXPOSE 8000
 
-ENV M5W_LOG_PATH=/data/scan.log \
-    PYTHONUNBUFFERED=1
-
-CMD ["sh", "-c", "touch /data/scan.log && exec m5wireless run --source file --log-path /data/scan.log --host 0.0.0.0"]
+# Arranca con una sesion ya cerrada: fixture sintetico -> 5 hallazgos -> informe.
+CMD ["m5wireless", "demo", "--serve", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,32 +1,13 @@
-# m5wireless + (opcional) Splunk para pruebas HEC.
-#
-# Uso:
-#   docker compose up -d m5wireless          # solo el dashboard (modo file)
-#   docker compose --profile splunk up -d    # con Splunk para probar HEC
-#
-# Para reenviar a Splunk, fija en el servicio m5wireless:
-#   M5W_SPLUNK_HEC_URL=https://splunk:8088/services/collector/event
-#   M5W_SPLUNK_HEC_TOKEN=<token-HEC>
 services:
   m5wireless:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      # La URL del webhook NO se hardcodea aqui: se hereda del entorno.
+      M5W_WEBHOOK_URL: ${M5W_DISCORD_WEBHOOK}
+      M5W_UI_TOKEN: ${M5W_UI_TOKEN}
+      # Si accedes desde otra maquina, declara el host: M5W_ALLOWED_HOSTS=mi-host
+      M5W_ALLOWED_HOSTS: ${M5W_ALLOWED_HOSTS}
     volumes:
-      - ./data:/data
-    environment:
-      M5W_LOG_PATH: /data/scan.log
-    # Para pruebas HEC (con --profile splunk):
-    # environment:
-    #   M5W_SPLUNK_HEC_URL: https://splunk:8088/services/collector/event
-    #   M5W_SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN}
-
-  splunk:
-    image: splunk/splunk:latest
-    profiles: ["splunk"]
-    environment:
-      SPLUNK_START_ARGS: --accept-license
-      SPLUNK_LICENSE: 86b01c3e-43c8-49cb-80d7-dd52308f86e3
-      SPLUNK_PASSWORD: changeme123!
-    ports:
-      - "8100:8000" # GUI de Splunk (HEC va en el puerto interno 8088).
+      - ./data:/app/data

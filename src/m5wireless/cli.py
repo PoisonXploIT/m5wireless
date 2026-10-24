@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .findings.registry import CATALOG_VERSION
 from .models import SourceType, utc_now
 from .parser.registry import get_parser
 from .source.base import AbstractSource
@@ -296,6 +297,131 @@ def _cmd_report(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def _cmd_close(args: argparse.Namespace) -> int:
+    """Cerrar una sesion: evaluar reglas, escribir informe y avisar al webhook."""
+    from .findings.engine import context_from_store, evaluate_session
+    from .report import build_context, verify_evidence, write_report
+    from .session import close_session, session_dir
+
+    db = args.db or os.environ.get("M5W_DB_PATH") or "m5wireless.db"
+    root = args.root
+    store = SQLiteStore(db)
+    try:
+        evaluate_session(store, context_from_store(store, args.session))
+        session = close_session(store, args.session, root=root)
+        findings = store.list_findings(session_id=args.session)
+        directory = session_dir(root, args.session)
+        for path in write_report(directory, build_context(store, args.session), ("md", "html")):
+            print(f"escrito: {path}")
+        if args.csv:
+            from .report.findings_csv import write_findings_csv
+
+            print(f"escrito: {write_findings_csv(args.csv, findings)}")
+    finally:
+        store.close()
+
+    if args.webhook:
+        from .exporter.webhook import WebhookNotifier, resolve_webhook_config
+
+        config = resolve_webhook_config(url=args.webhook, kind=args.webhook_kind)
+        if config is None:
+            print("aviso: no hay webhook que enviar", file=sys.stderr)
+        else:
+            notifier = WebhookNotifier(config)
+            try:
+                result = notifier.notify_session_closed(session, findings, CATALOG_VERSION)
+            finally:
+                notifier.close()
+            print(f"webhook: {'enviado' if result['ok'] else 'fallido'} ({result.get('detail')})")
+            if not result["ok"]:
+                return 1
+    check = verify_evidence(directory)
+    print(
+        f"integridad: {'verificada' if check['ok'] else 'revisar'} ({check['comprobados']} artefactos)"
+    )
+    return 0 if check["ok"] else 1
+
+
+def _cmd_export_findings(args: argparse.Namespace) -> int:
+    """Exportar los hallazgos de una sesion a CSV."""
+    from .report.findings_csv import write_findings_csv
+
+    db = args.db or os.environ.get("M5W_DB_PATH") or "m5wireless.db"
+    store = SQLiteStore(db)
+    try:
+        findings = store.list_findings(session_id=args.session)
+    finally:
+        store.close()
+    path = write_findings_csv(args.output, findings)
+    print(f"{len(findings)} hallazgos -> {path}")
+    return 0
+
+
+def _cmd_demo(args: argparse.Namespace) -> int:
+    """Demo reproducible: fixture sinteticos -> sesion -> cierre -> informe.
+
+    Es lo que levanta `docker compose up`: deja una sesion cerrada con 5
+    hallazgos y su informe listo para descargar.
+    """
+    from dataclasses import replace
+    from pathlib import Path as _Path
+
+    from .findings.engine import context_from_fixture, evaluate_session
+    from .report import build_context, write_report
+    from .report.findings_csv import write_findings_csv
+    from .session import close_session, create_session, session_dir
+
+    fixture = _Path(__file__).parent / "data" / "assessment_demo.json"
+    db = args.db or os.environ.get("M5W_DB_PATH") or "data/demo.db"
+    root = args.root or "data/sessions"
+    store = SQLiteStore(db)
+    try:
+        session = create_session(
+            store,
+            "Demo de evaluacion",
+            root=root,
+            cliente="Cliente demo",
+            operador="m5wireless",
+            source="file",
+        )
+        ctx = replace(context_from_fixture(fixture), session_id=session.id)
+        created = evaluate_session(store, ctx)
+        close_session(store, session.id, root=root)
+        directory = session_dir(root, session.id)
+        for path in write_report(directory, build_context(store, session.id), ("md", "html")):
+            print(f"escrito: {path}")
+        csv_path = write_findings_csv(directory / "findings.csv", created)
+        print(f"escrito: {csv_path}")
+        print(f"sesion: {session.id}")
+        print(f"hallazgos: {len(created)}")
+        if args.webhook:
+            from .exporter.webhook import WebhookNotifier, resolve_webhook_config
+
+            config = resolve_webhook_config(url=args.webhook, kind=args.webhook_kind)
+            if config is not None:
+                notifier = WebhookNotifier(config)
+                try:
+                    result = notifier.notify_session_closed(session, created, CATALOG_VERSION)
+                finally:
+                    notifier.close()
+                print(
+                    f"webhook: {'enviado' if result['ok'] else 'fallido'} ({result.get('detail')})"
+                )
+        if args.serve:
+            import uvicorn
+
+            from .web import create_app
+
+            print(f"dashboard: http://{args.host}:{args.port} (sesion {session.id})")
+            uvicorn.run(
+                create_app(store, data_dir=_Path(root).parent), host=args.host, port=args.port
+            )
+    finally:
+        if not args.serve:
+            store.close()
+    return 0
 
 
 def _build_splunk_exporter(cfg: dict[str, Any]) -> Any | None:
@@ -657,6 +783,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--db", default=None, help="SQLite de la sesion (por defecto M5W_DB_PATH o m5wireless.db)"
     )
     report_p.set_defaults(func=_cmd_report)
+
+    close_p = subparsers.add_parser(
+        "close", help="cerrar una sesion: evaluar reglas, informe, evidencia y webhook"
+    )
+    close_p.add_argument("--session", required=True, help="id de la sesion, p. ej. 20261024-demo")
+    close_p.add_argument("--root", default="data/sessions", help="carpeta de sesiones")
+    close_p.add_argument(
+        "--db", default=None, help="SQLite (por defecto M5W_DB_PATH o m5wireless.db)"
+    )
+    close_p.add_argument("--csv", default=None, help="ademas escribir los hallazgos a este CSV")
+    close_p.add_argument("--webhook", default=None, help="URL de webhook (o M5W_WEBHOOK_URL)")
+    close_p.add_argument(
+        "--webhook-kind",
+        default=None,
+        choices=("generic", "discord"),
+        help="formato del payload (se autodetecta para Discord)",
+    )
+    close_p.set_defaults(func=_cmd_close)
+
+    findings_p = subparsers.add_parser("findings", help="exportar hallazgos a CSV")
+    findings_p.add_argument("--session", required=True)
+    findings_p.add_argument("--output", required=True)
+    findings_p.add_argument("--db", default=None)
+    findings_p.set_defaults(func=_cmd_export_findings)
+
+    demo_p = subparsers.add_parser(
+        "demo", help="demo reproducible: fixture sinteticos -> sesion cerrada -> informe"
+    )
+    demo_p.add_argument("--db", default=None, help="SQLite de la demo (por defecto data/demo.db)")
+    demo_p.add_argument(
+        "--root", default=None, help="carpeta de sesiones (por defecto data/sessions)"
+    )
+    demo_p.add_argument("--webhook", default=None, help="URL de webhook para avisar del cierre")
+    demo_p.add_argument("--webhook-kind", default=None, choices=("generic", "discord"))
+    demo_p.add_argument("--serve", action="store_true", help="arrancar el dashboard tras la demo")
+    demo_p.add_argument("--host", default="127.0.0.1")
+    demo_p.add_argument("--port", type=int, default=8000)
+    demo_p.set_defaults(func=_cmd_demo)
 
     return parser
 
