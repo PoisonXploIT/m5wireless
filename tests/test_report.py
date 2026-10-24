@@ -185,7 +185,8 @@ def test_write_report_and_verify_evidence(tmp_path: Path) -> None:
     assert {"report.md", "report.html", "evidence.json"} <= names
     check = verify_evidence(tmp_path)
     assert check["ok"] is True
-    assert check["comprobados"] == 1
+    # 1 artefacto + los dos informes generados (report.md, report.html).
+    assert check["comprobados"] == 3
 
     # Manipular el artefacto rompe la verificacion.
     (artifacts / "captura.log").write_bytes(b"Found network: Ch: 6 (alterado)\n")
@@ -262,3 +263,39 @@ def test_single_format_works(fmt: str) -> None:
     ctx = _context((_finding("WIFI-OPEN", "alta", "Red abierta", "aa:bb:cc:dd:ee:01"),))
     text = render_markdown(ctx) if fmt == "md" else render_html(ctx)
     assert "WIFI-OPEN" in text
+
+
+def test_report_files_are_part_of_the_integrity_check(tmp_path: Path) -> None:
+    """El propio informe queda registrado en `hashes.json`: si alguien lo
+    manipula tras generarlo, `verify_evidence` lo detecta."""
+    from dataclasses import replace
+
+    from m5wireless.findings.engine import context_from_fixture, evaluate_session
+    from m5wireless.report.context import build_context
+    from m5wireless.report.evidence import verify_evidence
+    from m5wireless.report.writer import write_report
+    from m5wireless.session import close_session, create_session
+    from m5wireless.store import SQLiteStore
+
+    root = tmp_path / "sessions"
+    store = SQLiteStore(tmp_path / "integrity.db")
+    fixture = Path(__file__).parent / "fixtures" / "assessment" / "redes.json"
+    ctx = replace(context_from_fixture(fixture), session_id="20261024-integridad")
+    session = create_session(
+        store, "Integridad", root=root, inicio=T0, session_id="20261024-integridad"
+    )
+    evaluate_session(store, ctx)
+    close_session(store, session.id, root=root, closed_at=T0)
+    directory = root / session.id
+    write_report(directory, build_context(store, session.id))
+
+    hashes = json.loads((directory / "hashes.json").read_text(encoding="utf-8"))
+    rutas = {entry["ruta"] for entry in hashes["artifacts"]}
+    assert {"report.md", "report.html"} <= rutas
+    assert verify_evidence(directory)["ok"] is True
+
+    (directory / "report.md").write_text("informe manipulado", encoding="utf-8")
+    result = verify_evidence(directory)
+    assert result["ok"] is False
+    assert result["diferentes"] == ["report.md"]
+    store.close()

@@ -147,10 +147,20 @@ def test_report_generation_reports_integrity(client: TestClient) -> None:
     assert body["integrity"]["ok"] is True
     assert len(body["written"]) == 3
 
-    # Sin `hashes.json` (sesion abierta, nunca cerrada) la integridad no puede afirmarse.
+    # Una sesion abierta tambien verifica su informe: `write_report` registra
+    # report.md en hashes.json, aunque no haya artefactos crudos.
     abierta = client.post("/api/sessions", json={"nombre": "Abierta"}).json()
     res_abierta = client.post(f"/api/sessions/{abierta['id']}/report?fmt=md")
-    assert res_abierta.json()["integrity"]["ok"] is False
+    integrity = res_abierta.json()["integrity"]
+    assert integrity["ok"] is True
+    assert integrity["comprobados"] == 1  # solo report.md
+
+    # Una sesion sin informe generado no puede afirmar integridad: no hay hashes.
+    from m5wireless.report.evidence import verify_evidence
+
+    never = client.post("/api/sessions", json={"nombre": "Sin informe"}).json()
+    root = client.app.state.sessions_root
+    assert verify_evidence(root / never["id"])["ok"] is False
 
 
 def test_findings_global_and_filters(client: TestClient) -> None:
@@ -190,6 +200,11 @@ def test_evidence_endpoint_returns_schema(client: TestClient) -> None:
     assert body["schema"] == "m5wireless/evidence/1"
     assert body["session"]["id"] == created["id"]
     assert isinstance(body["findings"], list)
+    # El informe se auto-verifica: report.md y report.html aparecen en `hashes`.
+    rutas = {entry["ruta"] for entry in body["hashes"]}
+    assert {"report.md", "report.html"} <= rutas
+    assert all(entry["ok"] for entry in body["hashes"])
+    assert body["integrity"]["ok"] is True
 
 
 def test_endpoints_require_token(seeded_store: MemoryStore, tmp_path) -> None:

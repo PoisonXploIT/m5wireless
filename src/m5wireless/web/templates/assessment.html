@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a0e15" />
+    <meta
+      name="description"
+      content="Consola de evaluacion WiFi: sesiones, hallazgos, triaje e informe con evidencia verificable."
+    />
+    <title>m5wireless - evaluacion</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/static/mask-icon.svg" color="#4c8dff" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#hallazgos">Saltar a los hallazgos</a>
+    <header class="topbar">
+      <h1>
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+            <path d="M6 19a10 10 0 0 1 20 0" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+            <path d="M10.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity="0.6" />
+            <circle cx="16" cy="21" r="2.4" fill="#3fb950" />
+          </svg>
+        </span>
+        m5wireless
+      </h1>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-link" href="/">Redes</a>
+        <a class="nav-link is-active" href="/evaluacion" aria-current="page">Evaluacion</a>
+      </nav>
+      <span id="session-status" class="status status-offline">sesion: sin crear</span>
+    </header>
+
+    <main class="assessment">
+      <section class="panel session-panel" aria-label="Sesion de trabajo">
+        <div class="panel-head">
+          <h2>Sesion</h2>
+          <span id="session-meta" class="mono session-meta">sin sesion</span>
+        </div>
+        <div class="field session-select-field">
+          <label for="session-select">Sesion seleccionada</label>
+          <select id="session-select">
+            <option value="">ninguna</option>
+          </select>
+        </div>
+        <form id="session-form" class="session-form" autocomplete="off">
+          <div class="field">
+            <label for="session-nombre">Nombre</label>
+            <input id="session-nombre" name="nombre" type="text" placeholder="Auditoria WiFi 2026-10-24" required />
+          </div>
+          <div class="field">
+            <label for="session-cliente">Cliente</label>
+            <input id="session-cliente" name="cliente" type="text" placeholder="Acme SL" />
+          </div>
+          <div class="field">
+            <label for="session-operador">Operador</label>
+            <input id="session-operador" name="operador" type="text" placeholder="Nombre del tecnico" />
+          </div>
+          <div class="field">
+            <label for="session-lugar">Lugar</label>
+            <input id="session-lugar" name="lugar" type="text" placeholder="Oficina, planta, domicilio" />
+          </div>
+          <div class="field">
+            <label for="session-alcance">Alcance</label>
+            <input id="session-alcance" name="alcance" type="text" placeholder="Rango evaluado" />
+          </div>
+          <div class="field">
+            <label for="session-source">Fuente</label>
+            <select id="session-source" name="source">
+              <option value="file">file</option>
+              <option value="serial">serial</option>
+              <option value="sdcard">sdcard</option>
+              <option value="bruce">bruce</option>
+              <option value="bruce-web">bruce-web</option>
+            </select>
+          </div>
+          <div class="session-actions">
+            <button type="submit" class="btn btn-primary">Crear sesion</button>
+            <button type="button" id="session-close" class="btn" disabled>
+              Cerrar y evaluar
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel counters-panel" aria-label="Contadores de hallazgos">
+        <h2>Contadores</h2>
+        <ul id="counters" class="counters">
+          <li class="counter"><span class="counter-value" id="count-total">0</span><span class="counter-label">total</span></li>
+          <li class="counter counter-alta"><span class="counter-value" id="count-alta">0</span><span class="counter-label">alta</span></li>
+          <li class="counter counter-media"><span class="counter-value" id="count-media">0</span><span class="counter-label">media</span></li>
+          <li class="counter counter-baja"><span class="counter-value" id="count-baja">0</span><span class="counter-label">baja</span></li>
+          <li class="counter counter-info"><span class="counter-value" id="count-info">0</span><span class="counter-label">info</span></li>
+          <li class="counter"><span class="counter-value" id="count-open">0</span><span class="counter-label">sin triar</span></li>
+        </ul>
+      </section>
+
+      <section class="panel findings-panel" id="hallazgos" aria-label="Hallazgos">
+        <div class="panel-head">
+          <h2>Hallazgos</h2>
+          <div class="finding-filters" role="group" aria-label="Filtros de hallazgos">
+            <label for="filter-severidad">Severidad</label>
+            <select id="filter-severidad">
+              <option value="">todas</option>
+              <option value="alta">alta</option>
+              <option value="media">media</option>
+              <option value="baja">baja</option>
+              <option value="info">info</option>
+            </select>
+            <label for="filter-estado">Estado</label>
+            <select id="filter-estado">
+              <option value="">todos</option>
+              <option value="abierto">abierto</option>
+              <option value="aceptado">aceptado</option>
+              <option value="falso_positivo">falso positivo</option>
+              <option value="corregido">corregido</option>
+            </select>
+          </div>
+        </div>
+        <ul id="findings-list" class="findings"></ul>
+        <p id="findings-empty" class="empty" hidden>
+          No hay hallazgos. Cierra la sesion para evaluar el catalogo de reglas
+          sobre las redes observadas.
+        </p>
+      </section>
+
+      <section class="panel report-panel" aria-label="Informe y evidencia">
+        <div class="panel-head">
+          <h2>Informe</h2>
+          <div class="report-actions">
+            <button type="button" id="report-generate" class="btn btn-primary">Generar informe</button>
+            <a class="btn btn-ghost" id="report-md" href="/api/sessions/demo/report?fmt=md">Descargar Markdown</a>
+            <a class="btn btn-ghost" id="report-html" href="/api/sessions/demo/report?fmt=html">Descargar HTML</a>
+          </div>
+        </div>
+        <p id="integrity" class="integrity" role="status">Integridad: sin verificar</p>
+        <div class="table-wrap">
+          <table id="evidence-table">
+            <thead>
+              <tr>
+                <th scope="col">Artefacto</th>
+                <th scope="col">SHA-256</th>
+                <th scope="col">Bytes</th>
+                <th scope="col">Estado</th>
+              </tr>
+            </thead>
+            <tbody id="evidence-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a class="btn btn-ghost" href="/api/health">Health</a>
+      <a class="btn btn-ghost" href="/">Volver a redes</a>
+    </footer>
+
+    <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+    <script src="/static/js/assessment.js" defer></script>
+  </body>
+</html>

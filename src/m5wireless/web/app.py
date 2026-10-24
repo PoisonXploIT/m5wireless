@@ -50,12 +50,13 @@ _WEB_DIR = Path(__file__).parent
 _STATIC_DIR = _WEB_DIR / "static"
 _INDEX_HTML = _WEB_DIR / "templates" / "index.html"
 _NETWORK_HTML = _WEB_DIR / "templates" / "network.html"
+_ASSESSMENT_HTML = _WEB_DIR / "templates" / "assessment.html"
 
 # Rutas cuyo contenido cambia entre versiones del paquete: sin `Cache-Control`
 # el navegador aplica heuristic caching y puede servir CSS/JS viejo tras
 # actualizar (el usuario "no ve cambios"). `no-cache` = revalidar siempre;
 # el ETag/Last-Modified del StaticFiles hace la revalidacion barata (304).
-_NO_CACHE_PATHS = ("/", "/network")
+_NO_CACHE_PATHS = ("/", "/network", "/evaluacion")
 _NO_CACHE_PREFIXES = ("/static/",)
 
 
@@ -183,5 +184,10 @@ def create_app(
     def network() -> FileResponse:
         """Vista de detalle de red (clientes, historico, evolucion RSSI)."""
         return FileResponse(_NETWORK_HTML, media_type="text/html")
+
+    @app.get("/evaluacion", include_in_schema=False)
+    def assessment() -> FileResponse:
+        """Consola de evaluacion: sesiones, hallazgos, triaje e informe (Paso 5)."""
+        return FileResponse(_ASSESSMENT_HTML, media_type="text/html")
 
     return app

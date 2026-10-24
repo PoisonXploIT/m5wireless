@@ -991,7 +991,24 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   2. `make_finding_id` no incluia la sesion: dos sesiones con el mismo activo
      compartian id y la segunda no guardaba hallazgos. El id ahora es
      `rule_id + hash(sesion + activo)`, estable dentro de una sesion.
-- **Paso 5 (pendiente)**: UI de triaje (Sesiones / Hallazgos / Redes / Informe).
+- **Paso 5 (COMPLETO, 2026-10-24)**: consola de evaluacion en `/evaluacion`
+  (`templates/assessment.html` + `static/js/assessment.js`): selector de sesion,
+  alta de sesion (nombre, cliente, operador, lugar, alcance, fuente), cierre con
+  evaluacion del catalogo, contadores por severidad y sin triar, lista de
+  hallazgos con evidencia y recomendacion, botones de triaje
+  (abierto/aceptado/falso positivo/corregido), generacion y descarga del informe
+  y tabla de hashes con estado de integridad. Navegacion `Redes / Evaluacion` en
+  ambas paginas. En `/`, contadores, pipeline y canales pasan a un
+  `<details class="panel tech-panel">` plegado por defecto.
+  Cambios de soporte: `/evaluacion` entra en `PAGE_PATHS` y en `_NO_CACHE_PATHS`;
+  `write_report` registra `report.md`/`report.html` en `hashes.json` (el hash se
+  actualiza al regenerar) y `/api/sessions/{id}/evidence` devuelve `hashes` +
+  `integrity`.
+  Verificacion real con Chrome headless + axe-core (`scripts/axe_check.js`):
+  **0 violaciones** en `/evaluacion` (con 5 hallazgos renderizados) y en `/`.
+  `scripts/responsive_check.js` a 390 px: `scrollWidth` 390, 0 elementos
+  desbordados fuera de contenedores con scroll. 10 tests nuevos
+  (`tests/test_web_assessment.py`) y 363 passed en total.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

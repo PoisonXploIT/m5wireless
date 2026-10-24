@@ -876,8 +876,28 @@ def session_evidence(
     store: AbstractStore = Depends(get_store),
     root: Path = Depends(get_sessions_root),
 ) -> dict[str, object]:
+    """Evidencia de la sesion, con la lista de hashes y su verificacion.
+
+    `hashes` es el contenido de `hashes.json` (artefactos crudos + los propios
+    informes) y `integrity` el resultado de recalcularlos.
+    """
     _get_session_or_404(store, session_id)
-    path = root / session_id / "evidence.json"
+    directory = root / session_id
+    path = directory / "evidence.json"
     if not path.is_file():
-        write_evidence(root / session_id, build_context(store, session_id))
-    return cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+        write_evidence(directory, build_context(store, session_id))
+    payload = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+    hashes_path = directory / "hashes.json"
+    hashes = (
+        json.loads(hashes_path.read_text(encoding="utf-8")).get("artifacts", [])
+        if hashes_path.is_file()
+        else []
+    )
+    integrity = verify_evidence(directory)
+    bad = set(integrity.get("diferentes", [])) | set(integrity.get("faltan", []))
+    payload["hashes"] = [
+        {**entry, "ok": entry.get("ruta") not in bad}
+        for entry in cast("list[dict[str, object]]", hashes)
+    ]
+    payload["integrity"] = integrity
+    return payload

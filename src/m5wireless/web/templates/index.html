@@ -27,6 +27,10 @@
         </span>
         m5wireless
       </h1>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-link is-active" href="/" aria-current="page">Redes</a>
+        <a class="nav-link" href="/evaluacion">Evaluacion</a>
+      </nav>
       <span id="conn-status" class="status status-offline" title="Estado de la fuente">
         fuente: —
       </span>
@@ -170,8 +174,64 @@
         <p class="console-note" id="console-note">Filtros de la tabla se guardan en la URL (<code>?ssid=</code>, <code>?ch=</code>) y en el navegador: se recuperan al recargar.</p>
       </section>
 
-      <section class="panel channels-panel" aria-label="Distribución por canal">
-        <h2>Distribución por canal</h2>
+      <details class="panel tech-panel">
+        <summary>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 17V9M9 17V5M14 17v-7M19 17V7" />
+          </svg>
+          Panel tecnico: contadores, pipeline y canales
+        </summary>
+        <section class="stats" aria-label="Contadores">
+          <div class="stat">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M5 12.5a10 10 0 0 1 14 0" /><path d="M8.5 16a5.5 5.5 0 0 1 7 0" /><circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none" />
+                </svg>
+              </span>
+              <span class="stat-label">redes</span>
+            </div>
+            <span class="stat-value" id="count-networks" aria-live="polite">0</span>
+            <span class="stat-spark" id="spark-networks" title="Redes vistas en los últimos 10 min"></span>
+          </div>
+          <div class="stat">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <rect x="3" y="7" width="18" height="12" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M7 15h10" />
+                </svg>
+              </span>
+              <span class="stat-label">clientes</span>
+            </div>
+            <span class="stat-value" id="count-clients" aria-live="polite">0</span>
+            <span class="stat-spark" id="spark-clients" title="Clientes vistos en los últimos 10 min"></span>
+          </div>
+          <div class="stat">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M4 17V9M9 17V5M14 17v-7M19 17V7" />
+                </svg>
+              </span>
+              <span class="stat-label">fuente</span>
+            </div>
+            <span class="stat-value stat-value-small" id="meta-source">—</span>
+          </div>
+          <div class="stat">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M3 12h4l2 6 4-14 2 8h6" />
+                </svg>
+              </span>
+              <span class="stat-label">pipeline</span>
+            </div>
+            <div class="stat-pipeline mono" title="Líneas leídas, eventos parseados, errores">
+              <span id="stat-lines">—</span><span class="stat-sep">·</span><span id="stat-events">—</span><span class="stat-sep">·</span><span id="stat-errors">—</span>
+            </div>
+            <span class="stat-sub">líneas, eventos, errores</span>
+          </div>
+        </section>
         <div class="channels-band">
           <h3 class="channels-band-title">2.4 GHz</h3>
           <ul id="channels-24" class="channels"></ul>
@@ -180,7 +240,7 @@
           <h3 class="channels-band-title">5 GHz</h3>
           <ul id="channels-5" class="channels"></ul>
         </div>
-      </section>
+      </details>
     </main>
 
     <footer class="footer">

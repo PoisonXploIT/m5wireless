@@ -1607,3 +1607,312 @@ tr.skeleton-row td {
 .splunk-status.ok {
   color: var(--rssi-good);
 }
+
+/* ---- Paso 5: consola de evaluacion (sesiones, hallazgos, triaje, informe) ---- */
+
+.nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.nav-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.nav-link.is-active {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+}
+
+.assessment {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.session-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.field input,
+.field select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.session-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.session-meta {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.counters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.counter {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.counter-value {
+  font-family: var(--mono);
+  font-size: 1.1rem;
+}
+
+.counter-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.counter-alta .counter-value {
+  color: var(--rssi-bad);
+}
+
+.counter-media .counter-value {
+  color: var(--rssi-mid);
+}
+
+.counter-baja .counter-value,
+.counter-info .counter-value {
+  color: var(--text-dim);
+}
+
+.finding-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.finding-filters label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.finding-filters select {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.findings {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.finding {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 12px 14px;
+}
+
+.finding-alta {
+  border-left-color: var(--rssi-bad);
+}
+
+.finding-media {
+  border-left-color: var(--rssi-mid);
+}
+
+.finding-baja,
+.finding-info {
+  border-left-color: var(--accent);
+}
+
+.finding-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.finding-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.sev {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.sev-alta {
+  color: var(--rssi-bad);
+}
+
+.sev-media {
+  color: var(--rssi-mid);
+}
+
+.sev-baja,
+.sev-info {
+  color: var(--text-dim);
+}
+
+.finding-meta,
+.finding-evidence,
+.finding-rec {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.finding-meta {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.triage {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.integrity {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.integrity-ok {
+  color: var(--rssi-good);
+}
+
+.integrity-bad {
+  color: var(--rssi-bad);
+}
+
+.empty {
+  margin: 12px 0 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toast-ok {
+  border-color: var(--rssi-good);
+  color: var(--text);
+}
+
+@media (max-width: 390px) {
+  .assessment {
+    padding: 10px;
+  }
+
+  .session-form {
+    grid-template-columns: 1fr;
+  }
+
+  .counters {
+    gap: 8px;
+  }
+
+  .counter {
+    padding: 6px 10px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .nav {
+    width: 100%;
+  }
+}
+
+/* Panel tecnico plegado (Paso 5): contadores, pipeline y canales dejan de
+   ocupar la cabecera del dashboard y se consultan bajo demanda. */
+.tech-panel summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tech-panel summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tech-panel[open] summary {
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.tech-panel .stats {
+  margin-top: 10px;
+}
