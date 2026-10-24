@@ -1051,6 +1051,10 @@
   const importProgressLabel = $("import-progress-label");
   const importResults = $("import-results");
   const importCancelBtn = $("import-cancel");
+  const importHistoryEl = $("import-history");
+  const importHistoryLabel = $("import-history-label");
+  const importAgainBtn = $("import-again");
+  const IMPORT_HISTORY_KEY = "m5w_last_import";
   let importBusy = false;
 
   function fmtSize(bytes) {
@@ -1201,6 +1205,33 @@
     return summary || {};
   }
 
+  function showImportHistory(record) {
+    // P2.1: "importar de nuevo" desde el historial de la sesion.
+    if (!record || !record.path) return;
+    importHistoryEl.hidden = false;
+    importHistoryLabel.textContent = record.files
+      ? `ultimo import: ${record.files} pcap(s), ${record.events} eventos`
+      : "ultimo import: sin eventos";
+    importAgainBtn.hidden = false;
+    importAgainBtn.dataset.path = record.path;
+  }
+
+  function rememberImport(path, data) {
+    const record = {
+      path,
+      files: data.files || 0,
+      events: data.events || 0,
+      errors: data.errors || 0,
+      at: new Date().toISOString(),
+    };
+    showImportHistory(record);
+    try {
+      localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(record));
+    } catch {
+      /* localStorage no disponible (navegador con almacenamiento bloqueado) */
+    }
+  }
+
   async function doImport(path, btn) {
     if (importBusy) return;
     importBusy = true;
@@ -1227,6 +1258,7 @@
         `Importados ${data.events} eventos de ${data.files} pcap(s)${detail}${cancelNote}`,
         data.cancelled ? "warn" : data.errors > 0 ? "warn" : "info"
       );
+      if (data.files > 0 || data.errors > 0) rememberImport(path, data);
     } catch (err) {
       showToast(`Import fallido: ${err.message}`, "error");
     } finally {
@@ -1241,6 +1273,11 @@
   function openImport() {
     importModal.hidden = false;
     browseTo(null);
+    try {
+      showImportHistory(JSON.parse(localStorage.getItem(IMPORT_HISTORY_KEY) || "null"));
+    } catch {
+      /* historial corrupto: se ignora */
+    }
   }
 
   function closeImport() {
@@ -1257,6 +1294,10 @@
     importDirBtn.addEventListener("click", () => {
       const path = importDirBtn.dataset.path;
       if (path) doImport(path, importDirBtn);
+    });
+    importAgainBtn.addEventListener("click", () => {
+      const path = importAgainBtn.dataset.path;
+      if (path) doImport(path, importAgainBtn);
     });
     importCancelBtn.addEventListener("click", async () => {
       // El servidor para ENTRE ficheros: un pcap se parsea entero o no se toca.

@@ -1543,6 +1543,20 @@ tr.skeleton-row td {
   font-size: 0.72rem;
 }
 
+.import-history {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.import-history .mono {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
 /* Dialogo de export (X2) */
 .export-form {
   display: flex;

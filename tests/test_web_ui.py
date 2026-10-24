@@ -335,6 +335,20 @@ def test_export_dialog_and_progress_have_css(client: TestClient) -> None:
     assert "transition: width" in css
 
 
+def test_import_history_offers_reimport(client: TestClient) -> None:
+    """P2.1: el modal recuerda el ultimo import y ofrece 'Importar de nuevo'."""
+    body = client.get("/").text
+    assert 'id="import-history"' in body
+    assert 'id="import-again"' in body
+    js = client.get("/static/js/dashboard.js").text
+    assert 'IMPORT_HISTORY_KEY = "m5w_last_import"' in js
+    assert "rememberImport(path, data)" in js
+    assert "showImportHistory(" in js
+    assert 'importAgainBtn.addEventListener("click"' in js
+    css = client.get("/static/css/style.css").text
+    assert ".import-history" in css
+
+
 def test_export_dialog_reads_the_table_filters(client: TestClient) -> None:
     """X2: el alcance 'filtrado' reutiliza los filtros de la tabla (SSID/canal/RSSI)."""
     js = client.get("/static/js/dashboard.js").text
