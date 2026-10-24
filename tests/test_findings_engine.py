@@ -88,3 +88,27 @@ def test_findings_filters_work(store) -> None:
     assert len(store.list_findings(severidad="info")) == 1
     assert store.list_findings(session_id="otra") == []
     assert len(store.list_findings(estado="abierto")) == 5
+
+def test_context_from_store_counts_observations(store) -> None:
+    from datetime import UTC, datetime
+
+    from m5wireless.findings.engine import context_from_store
+    from m5wireless.models import Network, NetworkSeen
+
+    now = datetime(2026, 10, 24, 9, 0, 0, tzinfo=UTC)
+    net = Network(bssid="aa:bb:cc:dd:ee:01", ssid="A", channel=6, rssi=-60)
+    store.apply(NetworkSeen(timestamp=now, firmware="marauder", source="file", raw_line="Found A", network=net))
+    store.apply(
+        NetworkSeen(
+            timestamp=datetime(2026, 10, 24, 9, 5, 0, tzinfo=UTC),
+            firmware="marauder",
+            source="file",
+            raw_line="Found A",
+            network=net,
+        )
+    )
+    ctx = context_from_store(store, "sesion-viva")
+    assert len(ctx.networks) == 1
+    fact = ctx.networks[0]
+    assert fact.seen_count == 2
+    assert fact.security is None  # el log no aporta seguridad: no se inventa

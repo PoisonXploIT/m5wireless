@@ -74,7 +74,7 @@ def hash_artifacts(directory: Path) -> list[Artifact]:
         artifacts.append(
             Artifact(
                 nombre=file.name,
-                ruta=str(file.relative_to(directory.parent)),
+                ruta=file.relative_to(directory.parent).as_posix(),
                 sha256=sha256_file(file),
                 bytes=file.stat().st_size,
             )
