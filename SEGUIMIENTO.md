@@ -4,9 +4,9 @@ Documento de seguimiento para vaciar contexto sin perder el hilo. Cada fase/camb
 lleva su **mini prompt**: bloques copy-paste para situar a un agente en sesión nueva
 tras overflow de contexto, sin necesidad de compactar.
 
-Última actualización: v3.4.0 publicada (tag v3.4.0 -> GitHub Release +
-PyPI; importador de capturas desde el dashboard; 196 tests, ruff +
-mypy --strict limpios).
+Última actualización: 2026-10-24 — plan de mejora P0/P1/P2 ejecutado en 7 tareas
+(seguridad web, responsive, consola, importador y export); 269 tests, ruff +
+mypy --strict limpios. Última release publicada: v3.4.0 (sin cambios de version).
 Roadmap actual: seccion 'Continuar' — unificacion de fuentes; quedan los
 items 2 (Marauder WebUI) y 3 (IQ HackRF), ambos gated por
 hardware/muestra real.
@@ -352,6 +352,59 @@ m5stick-wireless-viewer/
 ---
 
 ## Changelog (cada entrada con su mini prompt)
+
+### 2026-10-24 — Plan de mejora P0/P1/P2 (7 tareas, sin release)
+
+Auditoria previa en el vault (`40-IA\PROYECTOS\m5wireless\PLAN-MEJORA-2026-10-23.md`)
+y ejecucion en siete tareas programadas. Sin cambio de version ni publicacion en
+PyPI: todo queda en `main`.
+
+Seguridad:
+
+- **Host + token de sesion** (`web/security.py`): solo `localhost`/`127.0.0.1`
+  (403 si el `Host` es ajeno) y token en `/api/*` y `/api/events` (cookie
+  `m5w_ui` `HttpOnly; SameSite=Strict` o cabecera `X-M5W-Token`). El token sale
+  de `M5W_UI_TOKEN` o de `<data_dir>/.ui_token` (0600, ignorado por git).
+- **Raices permitidas** (`M5W_BROWSE_ROOTS`) en `/api/fs/browse` y `/api/import`:
+  `resolve()` + `is_relative_to`, 403 fuera de raiz, 400 en traversal, tope de
+  200 ficheros y un import concurrente.
+- **Cabeceras**: CSP (`default-src 'self'`, `script-src 'self'`, `frame-ancestors
+  'none'`), `nosniff`, `no-referrer`, `X-Frame-Options: DENY`.
+- **Sin XSS en chips**: `renderChips` construye con `textContent` y `<b>` por DOM;
+  `network.js` limpia el tooltip con `textContent`. `innerHTML` queda solo para
+  los SVG estaticos.
+- `/api/status` ya no publica rutas absolutas (la cabecera muestra `file:demo_scan.log`).
+
+UI/UX:
+
+- **Responsive**: `.grid` con `minmax(0,1fr)` y `min-width: 0` en hijos;
+  a 390 px `scrollWidth === 390` en `/` y `/network`.
+- **Accesibilidad**: timestamps de consola a `--text-dim`, `--text-faint`
+  aclarado, `h1` en `/network`, `skip link`, `:focus-visible`, favicon real
+  (`static/favicon.svg`, `apple-touch-icon.png`, `mask-icon.svg`).
+- **Consola**: boton "Seguir" (auto-scroll) y busqueda con resaltado.
+- **Filtros persistentes** en la URL (`?ssid=`, `?ch=`, `?rssi=`, `?clients=1`)
+  y en `localStorage`; la URL manda sobre lo guardado.
+- **Importador** con progreso NDJSON por fichero (`/api/import` start/file/done),
+  cancelacion (`/api/import/cancel`), resumen por archivo y "Importar de nuevo".
+- **Exportar** con dialogo: CSV/JSON, alcance filtrado o todo, `/api/export/count`,
+  estado y prueba de Splunk HEC, filtros server-side en los exports.
+
+Verificacion: 269 tests (2 skipped), `ruff` limpio, `mypy --strict` limpio;
+comprobado en vivo con instancia aparte (401 sin cookie, 403 con `Host` ajeno,
+CSP, raices, movil 390). Pendiente conocido: contraste del boton "Seguir"
+(corregido en el commit siguiente).
+
+Mini prompt para retomar:
+
+```text
+Continua m5wireless en C:\Users\Sammi\m5stick-wireless-viewer (main; tras el plan
+de mejora del 2026-10-24: Host+token, raices permitidas, CSP, responsive 390,
+consola con seguir/busqueda, filtros en URL, importador con progreso y export con
+dialogo; 269 tests, ruff y mypy --strict limpios; sin release nueva).
+Lee SEGUIMIENTO.md y la nota del vault 40-IA\PROYECTOS\m5wireless\PLAN-MEJORA-2026-10-23.md.
+Trabajo no gated: roadmap de unificacion (items 2 y 3 siguen gated por hardware).
+```
 
 ### Rename del repo a m5wireless + descripcion actualizada (2026-09-10)
 

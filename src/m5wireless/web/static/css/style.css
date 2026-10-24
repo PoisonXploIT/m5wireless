@@ -764,11 +764,11 @@ mark.hl {
 
 .btn.is-on {
   border-color: var(--accent);
-  color: var(--accent-strong);
+  color: var(--accent);
 }
 
 .btn.is-on svg {
-  stroke: var(--accent-strong);
+  stroke: var(--accent);
 }
 
 .console-note {
