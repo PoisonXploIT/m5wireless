@@ -959,8 +959,23 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   (OPEN, WEP, EVILTWIN, CLIENT-OPEN, TRANSIENT), 0 duplicados, y cada regla tiene
   su caso negativo. 29 tests nuevos en `tests/test_findings_*.py` (323 passed,
   2 skipped); ruff y mypy --strict limpios.
-- **Paso 3 (pendiente)**: `report/` (contexto, Markdown, HTML autocontenido) y
-  `evidence.py` con hashes verificables.
+- **Paso 3 (COMPLETO, 2026-10-24)**: `src/m5wireless/report/` con `context.py`
+  (`ReportContext`, orden determinista por severidad), `markdown.py`, `html.py`
+  (CSS embebido, sin CDN, sin JS, sin fuentes externas) y `evidence.py`
+  (`build_evidence`, `write_evidence`, `verify_evidence`: recalcula SHA-256 y
+  compara con `hashes.json`, detecta artefactos alterados, faltantes o sin hash).
+  `writer.py` deja `report.md`, `report.html` y `evidence.json` en la carpeta de
+  la sesion. Nueva subcomando CLI: `m5wireless report --session <id> --fmt md,html
+  [--db ...] [--root ...]`; devuelve 0 si la integridad esta verificada, 1 si hay
+  que revisarla. Escapado: SSID `<img onerror=alert(1)>` sale como texto en HTML
+  (`&lt;img...`) y como entidad en Markdown. 11 tests nuevos (334 passed, 2 skipped).
+  Limitacion anotada: una sesion alimentada solo con logs de firmware no aporta
+  campo de seguridad, asi que OPEN/WEP/CLIENT-OPEN no disparan (con el fixture
+  completo salen las 10 reglas evaluables). `network_facts` calcula `seen_count`
+  del historico de observaciones; el fixture demo ahora declara tantas
+  observaciones como `seen_count` para que la demo sea coherente.
+- **Paso 4 (pendiente)**: API `/api/sessions`, `/close`, `/findings`, `/report`,
+  `/evidence` compatible con lo actual.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

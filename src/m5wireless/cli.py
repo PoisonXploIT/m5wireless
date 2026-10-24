@@ -268,6 +268,36 @@ def _cmd_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    """Evaluar las reglas de una sesion y escribir su informe."""
+    from .findings.engine import context_from_store, evaluate_session
+    from .report import build_context, verify_evidence, write_report
+    from .session import session_dir
+
+    db = args.db or os.environ.get("M5W_DB_PATH") or "m5wireless.db"
+    store = SQLiteStore(db)
+    try:
+        evaluate_session(store, context_from_store(store, args.session))
+        ctx = build_context(store, args.session)
+    finally:
+        store.close()
+
+    formats = tuple(f.strip().lower() for f in args.fmt.split(",") if f.strip())
+    directory = session_dir(args.root, args.session)
+    for path in write_report(directory, ctx, formats):
+        print(f"escrito: {path}")
+    check = verify_evidence(directory)
+    if check["ok"]:
+        print(f"integridad: verificada ({check['comprobados']} artefactos)")
+        return 0
+    print(
+        f"integridad: revisar {check['diferentes']} diferentes, "
+        f"{check['faltan']} faltantes, {check['sin_hash']} sin hash",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _build_splunk_exporter(cfg: dict[str, Any]) -> Any | None:
     url = cfg["splunk_url"]
     token = cfg["splunk_token"]
@@ -612,6 +642,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--max", type=int, default=None, help="número máximo de snapshots (debug/tests)"
     )
     snap_p.set_defaults(func=_cmd_snapshot)
+
+    report_p = subparsers.add_parser(
+        "report", help="generar el informe (Markdown/HTML) y la evidencia de una sesion"
+    )
+    report_p.add_argument("--session", required=True, help="id de la sesion, p. ej. 20261024-demo")
+    report_p.add_argument(
+        "--fmt",
+        default="md,html",
+        help="formatos separados por coma: md, html (por defecto ambos)",
+    )
+    report_p.add_argument("--root", default="data/sessions", help="carpeta de sesiones")
+    report_p.add_argument(
+        "--db", default=None, help="SQLite de la sesion (por defecto M5W_DB_PATH o m5wireless.db)"
+    )
+    report_p.set_defaults(func=_cmd_report)
 
     return parser
 

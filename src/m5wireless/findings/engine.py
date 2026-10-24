@@ -63,6 +63,32 @@ def _parse_dt(value: Any) -> datetime | None:
     return dt
 
 
+def network_facts(store: AbstractStore) -> tuple[NetworkFact, ...]:
+    """Redes con el numero de veces vistas, calculado del historico.
+
+    La seguridad no existe en los logs de firmware: queda `None`.
+    """
+    observations = tuple(store.iter_observations())
+    seen: dict[str, int] = {}
+    for row in observations:
+        if row.bssid and row.event_type == "network_seen":
+            seen[row.bssid] = seen.get(row.bssid, 0) + 1
+    return tuple(
+        NetworkFact(
+            bssid=n.bssid,
+            ssid=n.ssid,
+            channel=n.channel,
+            rssi=n.rssi,
+            security=None,
+            wps=False,
+            seen_count=max(seen.get(n.bssid, 1), 1),
+            first_seen=n.first_seen,
+            last_seen=n.last_seen,
+        )
+        for n in store.get_networks()
+    )
+
+
 def context_from_store(
     store: AbstractStore,
     session_id: str,
@@ -75,25 +101,12 @@ def context_from_store(
     que dependen de ella (open, WEP, gemelo) no disparan. Es honesto: no se
     inventa lo que el dispositivo no midio.
     """
-    networks = tuple(
-        NetworkFact(
-            bssid=n.bssid,
-            ssid=n.ssid,
-            channel=n.channel,
-            rssi=n.rssi,
-            security=None,
-            wps=False,
-            seen_count=1,
-            first_seen=n.first_seen,
-            last_seen=n.last_seen,
-        )
-        for n in store.get_networks()
-    )
+    observations = tuple(store.iter_observations())
+    networks = network_facts(store)
     clients = tuple(
         ClientFact(mac=c.mac, bssid=c.bssid, first_seen=c.first_seen, last_seen=c.last_seen)
         for c in store.get_clients()
     )
-    observations = tuple(store.iter_observations())
     return RuleContext(
         session_id=session_id,
         networks=networks,
