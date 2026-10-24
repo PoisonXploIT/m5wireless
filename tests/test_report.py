@@ -8,14 +8,17 @@ verificables.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from m5wireless.findings.base import ClientFact, NetworkFact
+from m5wireless.findings.engine import context_from_fixture, evaluate_session
 from m5wireless.models import Active, Artifact, Finding, Session
 from m5wireless.report import (
+    build_context,
     build_evidence,
     render_html,
     render_markdown,
@@ -23,6 +26,7 @@ from m5wireless.report import (
     write_report,
 )
 from m5wireless.report.context import ReportContext
+from m5wireless.session import close_session, create_session
 
 GENERATED = datetime(2026, 10, 24, 10, 0, 0, tzinfo=UTC)
 T0 = datetime(2026, 10, 24, 9, 0, 0, tzinfo=UTC)
@@ -298,4 +302,67 @@ def test_report_files_are_part_of_the_integrity_check(tmp_path: Path) -> None:
     result = verify_evidence(directory)
     assert result["ok"] is False
     assert result["diferentes"] == ["report.md"]
+    store.close()
+
+
+def test_report_declares_checks_that_could_not_be_evaluated() -> None:
+    """El informe dice al cliente que la ausencia de hallazgos no es un aprobado."""
+    ctx = ReportContext(
+        session=_session(),
+        findings=(),
+        networks=(NetworkFact(bssid="11:22:33:44:55:01", ssid="Red", channel=6, rssi=-50),),
+        clients=(),
+        observations=(),
+        catalog_version=1,
+        generated_at=GENERATED,
+        previous_sessions=0,
+        gaps=(
+            {"rule_id": "WIFI-OPEN", "motivo": "la fuente no aporta el campo de seguridad"},
+            {"rule_id": "WIFI-WPS", "motivo": "ningun parser entrega el flag WPS"},
+        ),
+    )
+    markdown = render_markdown(ctx)
+    html = render_html(ctx)
+    assert "Comprobaciones no evaluadas" in markdown
+    assert "No significa que la red cumpla" in markdown
+    assert "WIFI-OPEN" in markdown and "WIFI-WPS" in markdown
+    assert "Comprobaciones no evaluadas" in html
+    assert "gap-note" in html
+
+
+def test_build_context_computes_the_gaps_from_the_store(tmp_path: Path) -> None:
+    """Sin datos de seguridad y sin sesiones previas, las reglas dependientes se listan."""
+    from m5wireless.store import SQLiteStore
+
+    store = SQLiteStore(tmp_path / "g.db")
+    root = tmp_path / "sessions"
+    session = create_session(store, "Sin seguridad", root=root, cliente="Acme", inicio=T0)
+    close_session(store, session.id, root=root, closed_at=T0)
+    ctx = build_context(store, session.id)
+    rule_ids = {gap["rule_id"] for gap in ctx.gaps}
+    assert {
+        "WIFI-OPEN",
+        "WIFI-WEP",
+        "WIFI-CLIENT-OPEN",
+        "WIFI-WPS",
+        "WIFI-CONFIG-DRIFT",
+    } <= rule_ids
+    assert ctx.previous_sessions == 0
+    store.close()
+
+
+def test_build_context_no_gap_when_rules_fire(tmp_path: Path) -> None:
+    """Si la fuente aporta seguridad, las reglas disparan y no se listan como gap."""
+    from m5wireless.store import SQLiteStore
+
+    store = SQLiteStore(tmp_path / "g2.db")
+    root = tmp_path / "sessions"
+    fixture = Path(__file__).parent / "fixtures" / "assessment" / "redes.json"
+    session = create_session(store, "Con seguridad", root=root, inicio=T0)
+    evaluate_session(store, replace(context_from_fixture(fixture), session_id=session.id))
+    close_session(store, session.id, root=root, closed_at=T0)
+    ctx = build_context(store, session.id)
+    fired = {finding.rule_id for finding in ctx.findings}
+    assert "WIFI-OPEN" in fired
+    assert all(gap["rule_id"] not in fired for gap in ctx.gaps)
     store.close()

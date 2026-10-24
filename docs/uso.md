@@ -43,8 +43,16 @@ es lo primero que se ve; el detalle se consulta bajo demanda.
 m5wireless report --session 20261024-demo --fmt md,html
 m5wireless close --session 20261024-demo --csv hallazgos.csv
 m5wireless findings --session 20261024-demo --output hallazgos.csv
+m5wireless deliver --session 20261024-demo --cliente Acme --dest C:\Auditorias-WiFi
 m5wireless demo --serve
 ```
+
+`deliver` copia la carpeta de la sesion a `<dest>/<cliente>/<fecha>/` solo si la
+sesion esta **cerrada** y la evidencia verifica; no sobrescribe sin `--force`.
+La raiz puede fijarse con `M5W_DELIVER_DIR`.
+
+Un ejemplo real generado por la demo esta en
+[ejemplo-informe/](ejemplo-informe/).
 
 Las integraciones externas (webhooks, CSV para Splunk, demo Docker) estan en
 [docs/integraciones.md](integraciones.md).

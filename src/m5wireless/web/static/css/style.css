@@ -1653,6 +1653,9 @@ tr.skeleton-row td {
 .field {
   display: grid;
   gap: 4px;
+  /* min-width: 0 permite que el grid reduzca el campo al ancho del viewport;
+     sin el, el contenido (un select con opciones largas) fuerza el ancho. */
+  min-width: 0;
 }
 
 .field label {
@@ -1668,6 +1671,9 @@ tr.skeleton-row td {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .field input:focus-visible,

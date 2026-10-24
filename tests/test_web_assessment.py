@@ -114,3 +114,18 @@ def test_dashboard_moves_counters_to_collapsible_panel(client: TestClient) -> No
     assert body.index('id="networks-table"') < body.index('class="panel tech-panel"')
     assert 'id="channels-24"' in body
     assert 'id="count-networks"' in body
+
+
+def test_scrollable_tables_are_focusable(client: TestClient) -> None:
+    """axe exige que una region con scroll sea focusable (tabindex=0 + etiqueta)."""
+    for path in ("/", "/evaluacion"):
+        body = client.get(path).text
+        assert 'class="table-wrap" tabindex="0"' in body, path
+        assert 'aria-label="Tabla' in body, path
+
+
+def test_form_fields_are_constrained_to_the_viewport() -> None:
+    """A 390 px el select de sesion no puede forzar el ancho del grid."""
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    assert "min-width: 0;" in css
+    assert "max-width: 100%;" in css

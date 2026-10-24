@@ -32,6 +32,7 @@ Sin interfaz:
 m5wireless close --session 20261024-demo --csv hallazgos.csv
 m5wireless report --session 20261024-demo --fmt md,html
 m5wireless findings --session 20261024-demo --output hallazgos.csv
+m5wireless deliver --session 20261024-demo --cliente Acme --dest C:\Auditorias-WiFi
 ```
 
 Cada sesion deja en `data/sessions/<id>/`: `session.json`, `findings.json`,
@@ -88,6 +89,11 @@ pip install .[serial,web,splunk] # completo: serial en vivo + dashboard + Splunk
 ```
 
 El paquete crea el comando `m5wireless` (`m5wireless --version`).
+
+> **PyPI**: la ultima version publicada alli es **3.4.0**. La 3.5.0 esta en GitHub
+> (release `v3.5.0` con wheel y sdist) y no se ha podido subir a PyPI porque el
+> publisher OIDC del repo no esta registrado. Si necesitas la consola de
+> evaluacion, instala desde el repo.
 
 ## Uso rapido
 
@@ -241,8 +247,10 @@ docker compose --profile splunk up -d
 ```
 
 La demo (`m5wireless demo --serve`) deja una sesion evaluada lista para
-inspeccionar en `http://localhost:8000/evaluacion`. La captura serial en vivo
-se recomienda como host nativo (USB); el log lo aporta el volumen `./data`.
+inspeccionar en `http://localhost:8000/evaluacion`. **El contenedor no se ha
+ejecutado** (no hay Docker en la maquina de desarrollo); la demo local si esta
+verificada. La captura serial en vivo se recomienda como host nativo (USB); el log
+lo aporta el volumen `./data`.
 
 ## Firmwares soportados
 

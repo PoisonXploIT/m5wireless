@@ -161,6 +161,22 @@ def render_markdown(ctx: ReportContext) -> str:
         lines.append("Sin clientes registrados.")
     lines.append("")
 
+    # Comprobaciones no evaluadas (el cliente no debe leer "sin hallazgos" como "ok")
+    if ctx.gaps:
+        lines.append("## Comprobaciones no evaluadas en esta sesion")
+        lines.append("")
+        lines.append(
+            "Las siguientes reglas del catalogo no se pudieron aplicar porque la sesion "
+            "no aporta el dato necesario. **No significa que la red cumpla**: significa "
+            "que no se ha podido comprobar."
+        )
+        lines.append("")
+        lines.append("| Regla | Motivo |")
+        lines.append("|---|---|")
+        for gap in ctx.gaps:
+            lines.append(f"| `{gap['rule_id']}` | {_esc(gap['motivo'])} |")
+        lines.append("")
+
     # Limitaciones
     lines.append("## Limitaciones")
     lines.append("")

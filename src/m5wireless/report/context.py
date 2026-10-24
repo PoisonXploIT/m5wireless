@@ -38,6 +38,8 @@ class ReportContext:
     observations: tuple[ObservationRow, ...]
     catalog_version: int
     generated_at: datetime
+    previous_sessions: int = 0
+    gaps: tuple[dict[str, str], ...] = ()
 
     def ordered_findings(self) -> tuple[Finding, ...]:
         """Hallazgos en orden determinista, independientemente del orden de entrada."""
@@ -51,6 +53,44 @@ class ReportContext:
 
     def open_findings(self) -> list[Finding]:
         return [f for f in self.ordered_findings() if f.estado == "abierto"]
+
+
+def _data_gaps(
+    networks: tuple[NetworkFact, ...],
+    fired_rule_ids: set[str],
+    previous_sessions: int,
+) -> tuple[dict[str, str], ...]:
+    """Reglas del catalogo que NO se pudieron evaluar por falta de dato.
+
+    El informe debe decirlo: la ausencia de un hallazgo no es un aprobado. Solo
+    se listan las reglas que no dispararon y cuya entrada no existia en la sesion.
+    """
+    gaps: list[dict[str, str]] = []
+    if not any(net.security for net in networks):
+        for rule_id in ("WIFI-OPEN", "WIFI-WEP", "WIFI-CLIENT-OPEN"):
+            if rule_id not in fired_rule_ids:
+                gaps.append(
+                    {
+                        "rule_id": rule_id,
+                        "motivo": "la fuente de datos no aporta el campo de seguridad de la red",
+                    }
+                )
+    if "WIFI-WPS" not in fired_rule_ids and not any(net.wps for net in networks):
+        gaps.append(
+            {
+                "rule_id": "WIFI-WPS",
+                "motivo": "ningun parser de firmware entrega el flag WPS; no se puede afirmar "
+                "que no exista",
+            }
+        )
+    if "WIFI-CONFIG-DRIFT" not in fired_rule_ids and previous_sessions == 0:
+        gaps.append(
+            {
+                "rule_id": "WIFI-CONFIG-DRIFT",
+                "motivo": "no hay sesiones cerradas anteriores con las que comparar",
+            }
+        )
+    return tuple(gaps)
 
 
 def build_context(
@@ -71,6 +111,9 @@ def build_context(
     )
     from ..findings.registry import CATALOG_VERSION
 
+    previous_sessions = sum(
+        1 for other in store.list_sessions() if other.id != session_id and other.estado == "cerrada"
+    )
     return ReportContext(
         session=session,
         findings=findings,
@@ -79,4 +122,6 @@ def build_context(
         observations=tuple(store.iter_observations()),
         catalog_version=CATALOG_VERSION,
         generated_at=generated_at or utc_now(),
+        previous_sessions=previous_sessions,
+        gaps=_data_gaps(networks, {f.rule_id for f in findings}, previous_sessions),
     )

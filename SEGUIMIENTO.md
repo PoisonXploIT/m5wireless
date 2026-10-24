@@ -1062,6 +1062,35 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
     `tests/test_cli.py` (demo, close, export). Total: 382 passed, 2 skipped.
   - `docs/integraciones.md` redactado. Docker no esta instalado en esta maquina,
     la demo se verifico con `m5wireless demo` local.
+- **Paso 7 (COMPLETO, 2026-10-24)**: e2e `fixture -> sesion -> hallazgos -> triaje ->
+  informe -> evidencia -> CSV` (`tests/test_e2e_assessment.py`), README reescrito,
+  bump a `3.5.0` y changelog. Bug de dedupe encontrado: `WIFI-EVILTWIN` generaba dos
+  hallazgos para la misma pareja de APs segun el contexto; el activo se clavea por
+  SSID + BSSID minimo. Merge a `main` (`4778e8e`), tag `v3.5.0` y release en GitHub
+  con wheel y sdist. **PyPI no publicado**: el job falla con `invalid-publisher`
+  (publisher OIDC no registrado). 385 passed, 2 skipped.
+- **Paso 8 (COMPLETO, 2026-10-24) — revision posterior al merge**:
+  - **Honestidad del informe**: seccion "Comprobaciones no evaluadas en esta sesion"
+    (Markdown y HTML, `.gap-note`) calculada en `report/context.py` (`_data_gaps`,
+    `previous_sessions`): lista las reglas que no se pudieron aplicar por falta de
+    dato. La ausencia de hallazgo ya no se lee como cumplimiento.
+  - **Entregable a cliente**: `m5wireless deliver --session <id> --cliente Acme
+    --dest C:\Auditorias-WiFi` copia la carpeta de la sesion a
+    `<dest>/<cliente>/<fecha>/` solo si la sesion esta cerrada y la evidencia
+    verifica; no sobrescribe sin `--force`; sanear el nombre de carpeta.
+    Raiz por `--dest`, `M5W_DELIVER_DIR` o `./deliverables`.
+  - **Ejemplo de informe** en `docs/ejemplo-informe/` (md + html de la demo).
+  - **PyPI y Docker marcados como no verificados** en README y `docs/instalacion.md`.
+  - **Contraste y responsive medidos de verdad** (`scripts/contrast_check.js`, ratio
+    WCAG del color/fondo computado via CDP): `/evaluacion` minimo 4.7 sobre 63
+    elementos, `/` minimo 4.88 sobre 85, 0 por debajo del umbral. Con el viewport
+    realmente aplicado (390 px) aparecio un desbordamiento real que antes no se veia:
+    el `select` de sesion forzaba 463 px. Corregido con `.field { min-width: 0 }` y
+    `width/max-width: 100%`. Los scripts aplican ahora el override de emulacion tras
+    navegar y usan `mobile: false`.
+  - **axe** detectaba `scrollable-region-focusable` en `.table-wrap`: añadido
+    `tabindex="0"` + `aria-label` a las tablas con scroll de `/` y `/evaluacion`.
+  - 7 tests nuevos. Gates: 392 passed, 2 skipped; ruff y mypy --strict limpios.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

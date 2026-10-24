@@ -49,6 +49,7 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 .badge-info { background: var(--info); }
 .finding { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 12px 0; }
 .empty { color: var(--muted); }
+.gap-note { background: #fff7e6; border: 1px solid var(--media); border-radius: 6px; padding: 10px 12px; color: #1f2933; }
 @media (max-width: 420px) { body { padding: 14px; } table { font-size: 0.8rem; } }
 """
 
@@ -185,6 +186,21 @@ def render_html(ctx: ReportContext) -> str:
         out.append("</table>")
     else:
         out.append("<p class='empty'>Sin clientes registrados.</p>")
+
+    if ctx.gaps:
+        out.append("<h2>Comprobaciones no evaluadas en esta sesion</h2>")
+        out.append(
+            "<p class='gap-note'>Las siguientes reglas del catalogo no se pudieron aplicar "
+            "porque la sesion no aporta el dato necesario. <strong>No significa que la red "
+            "cumpla</strong>: significa que no se ha podido comprobar.</p>"
+        )
+        out.append("<table><tr><th>Regla</th><th>Motivo</th></tr>")
+        for gap in ctx.gaps:
+            out.append(
+                f"<tr><td><code>{_esc(gap['rule_id'])}</code></td>"
+                f"<td>{_esc(gap['motivo'])}</td></tr>"
+            )
+        out.append("</table>")
 
     out.extend(
         [

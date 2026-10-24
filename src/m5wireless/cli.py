@@ -424,6 +424,66 @@ def _cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _safe_component(value: str) -> str:
+    """Sanear un nombre de carpeta: sin separadores, sin puntos suspensivos, sin control."""
+    cleaned = "".join(char for char in value if char not in '\\/:*?"<>|' and char >= " ")
+    cleaned = cleaned.strip().replace(" ", "-")
+    return cleaned or "cliente"
+
+
+def _cmd_deliver(args: argparse.Namespace) -> int:
+    """Copiar el entregable de una sesion cerrada a la carpeta del cliente.
+
+    Requisitos: sesion cerrada, carpeta de sesion existente y evidencia verificada.
+    No sobrescribe salvo `--force`. La raiz sale de `--dest`, `M5W_DELIVER_DIR`
+    o `./deliverables`.
+    """
+    import shutil
+
+    from .models import utc_now
+    from .report import verify_evidence
+    from .session import session_dir
+
+    db = args.db or os.environ.get("M5W_DB_PATH") or "m5wireless.db"
+    store = SQLiteStore(db)
+    try:
+        session = store.get_session(args.session)
+        findings = store.list_findings(session_id=args.session)
+    finally:
+        store.close()
+
+    if session is None:
+        print(f"error: sesion no encontrada: {args.session}", file=sys.stderr)
+        return 1
+    if session.estado != "cerrada":
+        print("error: la sesion no esta cerrada; no se puede entregar", file=sys.stderr)
+        return 1
+
+    directory = session_dir(args.root, args.session)
+    if not directory.is_dir():
+        print(f"error: no existe la carpeta de la sesion: {directory}", file=sys.stderr)
+        return 1
+    check = verify_evidence(directory)
+    if not check["ok"]:
+        print("error: la evidencia no verifica; no se entrega", file=sys.stderr)
+        return 1
+
+    root = Path(args.dest or os.environ.get("M5W_DELIVER_DIR") or "deliverables")
+    cliente = _safe_component(args.cliente or session.cliente or "interno")
+    fecha = (session.fin or utc_now()).strftime("%Y-%m-%d")
+    target = root / cliente / fecha
+    if target.exists():
+        if not args.force:
+            print(f"error: {target} ya existe; usa --force para sobrescribir", file=sys.stderr)
+            return 1
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(directory, target)
+    print(f"entregable: {target}")
+    print(f"hallazgos: {len(findings)}; integridad: verificada ({check['comprobados']} artefactos)")
+    return 0
+
+
 def _build_splunk_exporter(cfg: dict[str, Any]) -> Any | None:
     url = cfg["splunk_url"]
     token = cfg["splunk_token"]
@@ -821,6 +881,30 @@ def build_parser() -> argparse.ArgumentParser:
     demo_p.add_argument("--host", default="127.0.0.1")
     demo_p.add_argument("--port", type=int, default=8000)
     demo_p.set_defaults(func=_cmd_demo)
+
+    deliver_p = subparsers.add_parser(
+        "deliver",
+        help="copiar el entregable de una sesion cerrada a la carpeta del cliente",
+    )
+    deliver_p.add_argument("--session", required=True, help="id de la sesion")
+    deliver_p.add_argument("--root", default="data/sessions", help="carpeta de sesiones")
+    deliver_p.add_argument(
+        "--db", default=None, help="SQLite (por defecto M5W_DB_PATH o m5wireless.db)"
+    )
+    deliver_p.add_argument(
+        "--dest",
+        default=None,
+        help="carpeta raiz de entregables (por defecto M5W_DELIVER_DIR o ./deliverables)",
+    )
+    deliver_p.add_argument(
+        "--cliente",
+        default=None,
+        help="nombre de la carpeta del cliente (por defecto el cliente de la sesion)",
+    )
+    deliver_p.add_argument(
+        "--force", action="store_true", help="sobrescribir si la carpeta ya existe"
+    )
+    deliver_p.set_defaults(func=_cmd_deliver)
 
     return parser
 

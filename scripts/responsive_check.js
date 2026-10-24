@@ -27,7 +27,11 @@ function wait(ws, id, timeoutMs = 20000) {
 }
 
 async function main() {
-  const created = await fetch(`${CDP}/json/new?url=${encodeURIComponent(url)}`, { method: "PUT" }).then((r) => r.json());
+  const targets = await fetch(`${CDP}/json`).then((r) => r.json());
+  const created =
+    targets.find((t) => t.type === "page" && t.url === url) ||
+    targets.find((t) => t.type === "page") ||
+    (await fetch(`${CDP}/json/new?url=${encodeURIComponent(url)}`, { method: "PUT" }).then((r) => r.json()));
   const ws = new WebSocket(created.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     ws.addEventListener("open", resolve);
@@ -36,11 +40,16 @@ async function main() {
 
   send(ws, 1, "Page.enable");
   await wait(ws, 1);
-  send(ws, 2, "Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: true });
+  send(ws, 2, "Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await wait(ws, 2);
   send(ws, 3, "Page.navigate", { url });
   await wait(ws, 3);
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // El override se vuelve a aplicar tras la navegacion: algunas versiones de
+  // Chrome lo ignoran si se fija antes de cargar la pagina.
+  send(ws, 5, "Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+  await wait(ws, 5);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 
   send(ws, 4, "Runtime.evaluate", {
     expression: "(() => {" +

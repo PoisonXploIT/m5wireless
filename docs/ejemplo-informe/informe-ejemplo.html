@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>Informe de evaluacion WiFi: Demo de evaluacion</title>
+<style>
+:root {
+  --ink: #1c1c1c;
+  --muted: #5a5a5a;
+  --line: #d6d6d6;
+  --critica: #8b1a1a;
+  --alta: #b02a2a;
+  --media: #8a6d1a;
+  --baja: #2f6b4f;
+  --info: #33506b;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  margin: 0;
+  padding: 24px;
+  line-height: 1.45;
+  max-width: 900px;
+}
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+h2 { font-size: 1.15rem; margin-top: 28px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+h3 { font-size: 1rem; margin-top: 18px; }
+p, li { font-size: 0.92rem; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.88rem; }
+th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { background: #f4f4f4; }
+code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.85rem; }
+.meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 18px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 0.8rem; }
+.badge-critica { background: var(--critica); }
+.badge-alta { background: var(--alta); }
+.badge-media { background: var(--media); }
+.badge-baja { background: var(--baja); }
+.badge-info { background: var(--info); }
+.finding { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 12px 0; }
+.empty { color: var(--muted); }
+.gap-note { background: #fff7e6; border: 1px solid var(--media); border-radius: 6px; padding: 10px 12px; color: #1f2933; }
+@media (max-width: 420px) { body { padding: 14px; } table { font-size: 0.8rem; } }
+</style>
+</head>
+<body>
+<h1>Informe de evaluacion WiFi: Demo de evaluacion</h1>
+<div class='meta'>
+Sesion 20261024-demo-de-evaluacion | cliente Cliente demo | periodo 2026-10-24T21:03:55.008605+00:00 a 2026-10-24T21:03:55.019590+00:00 | catalogo de reglas v1 | generado 2026-10-24T21:03:55.023603+00:00
+</div>
+<h2>Resumen ejecutivo</h2>
+<p>Se han detectado <strong>5</strong> hallazgos (5 abiertos).</p>
+<table><tr><th>Severidad</th><th>Hallazgos</th></tr>
+<tr><td>Alta</td><td>4</td></tr>
+<tr><td>Informativo</td><td>1</td></tr>
+</table>
+<h2>Alcance y metodo</h2>
+<p>Alcance declarado: no declarado</p>
+<p>Redes observadas: 0. Clientes observados: 0. Observaciones: 0.</p>
+<h2>Hallazgos</h2>
+<table><tr><th>#</th><th>Severidad</th><th>Regla</th><th>Hallazgo</th><th>Estado</th></tr>
+<tr><td>1</td><td><span class='badge badge-alta'>Alta</span></td><td><code>WIFI-CLIENT-OPEN</code></td><td>Cliente aa:aa:aa:aa:aa:01 asociado a una red abierta (Oficina-A)</td><td>abierto</td></tr>
+<tr><td>2</td><td><span class='badge badge-alta'>Alta</span></td><td><code>WIFI-EVILTWIN</code></td><td>Posible gemelo malicioso de &#x27;Oficina-A&#x27; (BSSID a8:bb:cc:dd:ee:01)</td><td>abierto</td></tr>
+<tr><td>3</td><td><span class='badge badge-alta'>Alta</span></td><td><code>WIFI-OPEN</code></td><td>Red abierta: Oficina-A</td><td>abierto</td></tr>
+<tr><td>4</td><td><span class='badge badge-alta'>Alta</span></td><td><code>WIFI-WEP</code></td><td>Red con WEP: Legacy-IOT</td><td>abierto</td></tr>
+<tr><td>5</td><td><span class='badge badge-info'>Informativo</span></td><td><code>WIFI-TRANSIENT</code></td><td>Red efimera: Cafe-Gratis vista una sola vez</td><td>abierto</td></tr>
+</table>
+<h2>Detalle de los hallazgos</h2>
+<div class='finding'>
+<h3>1. WIFI-CLIENT-OPEN <span class='badge badge-alta'>Alta</span></h3>
+<p><strong>Titulo:</strong> Cliente aa:aa:aa:aa:aa:01 asociado a una red abierta (Oficina-A)</p>
+<p><strong>Activo:</strong> BSSID a8:bb:cc:dd:ee:01, SSID Oficina-A, cliente aa:aa:aa:aa:aa:01</p>
+<p><strong>Evidencia:</strong></p><ul>
+<li>canal: 1</li>
+<li>seguridad: open</li>
+<li>primera_vez: 2026-10-24T09:14:00+00:00</li>
+<li>ultima_vez: 2026-10-24T09:32:00+00:00</li>
+</ul>
+<p><strong>Recomendacion:</strong> Ese dispositivo esta traficando sin cifrado. Localizarlo y conectarlo a una red con WPA2/WPA3, o apagar la red abierta que usa.</p>
+</div>
+<div class='finding'>
+<h3>2. WIFI-EVILTWIN <span class='badge badge-alta'>Alta</span></h3>
+<p><strong>Titulo:</strong> Posible gemelo malicioso de &#x27;Oficina-A&#x27; (BSSID a8:bb:cc:dd:ee:01)</p>
+<p><strong>Activo:</strong> BSSID 11:22:33:44:55:01, SSID Oficina-A</p>
+<p><strong>Evidencia:</strong></p><ul>
+<li>ssid_duplicado: Oficina-A</li>
+<li>bssids: [&#x27;11:22:33:44:55:01&#x27;, &#x27;a8:bb:cc:dd:ee:01&#x27;]</li>
+<li>sospechoso: a8:bb:cc:dd:ee:01</li>
+<li>variantes: [{&#x27;bssid&#x27;: &#x27;11:22:33:44:55:01&#x27;, &#x27;seguridad&#x27;: &#x27;wpa2&#x27;, &#x27;canal&#x27;: 6, &#x27;rssi&#x27;: -60}, {&#x27;bssid&#x27;: &#x27;a8:bb:cc:dd:ee:01&#x27;, &#x27;seguridad&#x27;: &#x27;open&#x27;, &#x27;canal&#x27;: 1, &#x27;rssi&#x27;: -55}]</li>
+<li>referencia: 11:22:33:44:55:01</li>
+</ul>
+<p><strong>Recomendacion:</strong> Verificar fisicamente el punto de acceso. Un SSID legitimo con otro BSSID y seguridad distinta es la firma de un AP falso: los clientes conectados a el salen de la red corporativa.</p>
+</div>
+<div class='finding'>
+<h3>3. WIFI-OPEN <span class='badge badge-alta'>Alta</span></h3>
+<p><strong>Titulo:</strong> Red abierta: Oficina-A</p>
+<p><strong>Activo:</strong> BSSID a8:bb:cc:dd:ee:01, SSID Oficina-A</p>
+<p><strong>Evidencia:</strong></p><ul>
+<li>canal: 1</li>
+<li>seguridad: open</li>
+<li>rssi: -55</li>
+<li>primera_vez: 2026-10-24T09:12:00+00:00</li>
+<li>ultima_vez: 2026-10-24T09:33:00+00:00</li>
+</ul>
+<p><strong>Recomendacion:</strong> Activar WPA2/WPA3 en la red o eliminar la red abierta. Una red sin clave cualquiera puede leerse y asociarse a ella.</p>
+</div>
+<div class='finding'>
+<h3>4. WIFI-WEP <span class='badge badge-alta'>Alta</span></h3>
+<p><strong>Titulo:</strong> Red con WEP: Legacy-IOT</p>
+<p><strong>Activo:</strong> BSSID 11:22:33:44:55:02, SSID Legacy-IOT</p>
+<p><strong>Evidencia:</strong></p><ul>
+<li>canal: 3</li>
+<li>seguridad: wep</li>
+<li>rssi: -70</li>
+<li>primera_vez: 2026-10-24T09:05:00+00:00</li>
+<li>ultima_vez: 2026-10-24T09:30:00+00:00</li>
+</ul>
+<p><strong>Recomendacion:</strong> Migrar a WPA2/WPA3. WEP se rompe en minutos con herramientas de auditoria y no admite parches.</p>
+</div>
+<div class='finding'>
+<h3>5. WIFI-TRANSIENT <span class='badge badge-info'>Informativo</span></h3>
+<p><strong>Titulo:</strong> Red efimera: Cafe-Gratis vista una sola vez</p>
+<p><strong>Activo:</strong> BSSID 22:33:44:55:66:77, SSID Cafe-Gratis</p>
+<p><strong>Evidencia:</strong></p><ul>
+<li>canal: 12</li>
+<li>seguridad: wpa2</li>
+<li>rssi: -90</li>
+<li>veces_vista: 1</li>
+<li>primera_vez: 2026-10-24T09:20:00+00:00</li>
+<li>ultima_vez: 2026-10-24T09:20:00+00:00</li>
+</ul>
+<p><strong>Recomendacion:</strong> No se puede evaluar una red que aparece una vez. Si vuelve a aparecer en otra sesion, se reevalua automaticamente.</p>
+</div>
+<h2>Anexo tecnico</h2>
+<h3>Redes observadas</h3>
+<p class='empty'>Sin redes registradas.</p>
+<h3>Clientes observados</h3>
+<p class='empty'>Sin clientes registrados.</p>
+<h2>Comprobaciones no evaluadas en esta sesion</h2>
+<p class='gap-note'>Las siguientes reglas del catalogo no se pudieron aplicar porque la sesion no aporta el dato necesario. <strong>No significa que la red cumpla</strong>: significa que no se ha podido comprobar.</p>
+<table><tr><th>Regla</th><th>Motivo</th></tr>
+<tr><td><code>WIFI-WPS</code></td><td>ningun parser de firmware entrega el flag WPS; no se puede afirmar que no exista</td></tr>
+<tr><td><code>WIFI-CONFIG-DRIFT</code></td><td>no hay sesiones cerradas anteriores con las que comparar</td></tr>
+</table>
+<h2>Limitaciones</h2>
+<p>La seguridad de cada red solo se evalua si la fuente de datos la aporta. Los logs de firmware no incluyen campo de seguridad, por lo que las reglas dependientes no disparan con logs puros.</p>
+<p>No se realizan pruebas activas: el informe describe lo observado, no lo probado.</p>
+<h2>Integridad de la evidencia</h2>
+<p class='empty'>Sin artefactos asociados a la sesion.</p>
+<h2>Autoria</h2>
+<p>Elaborado por m5wireless. Fecha de generacion: 2026-10-24T21:03:55.023603+00:00.</p>
+</body>
+</html>

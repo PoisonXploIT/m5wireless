@@ -319,3 +319,120 @@ def test_findings_cli_export(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     assert rc == 0
     assert "hallazgos ->" in capsys.readouterr().out
     assert (tmp_path / "f.csv").is_file()
+
+
+def _demo_session(tmp_path: Path) -> tuple[str, Path]:
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    cli.main(["demo", "--db", str(db), "--root", str(root)])
+    session_id = next(
+        (root / name).name for name in sorted(p.name for p in root.iterdir() if p.is_dir())
+    )
+    return session_id, root
+
+
+def test_deliver_copies_closed_session(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    session_id, root = _demo_session(tmp_path)
+    dest = tmp_path / "entregables"
+    rc = cli.main(
+        [
+            "deliver",
+            "--session",
+            session_id,
+            "--root",
+            str(root),
+            "--db",
+            str(tmp_path / "demo.db"),
+            "--dest",
+            str(dest),
+            "--cliente",
+            "Acme/2026",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    target = dest / "Acme2026"
+    assert target.is_dir(), out
+    entregable = next(child for child in target.iterdir() if child.is_dir())
+    assert (entregable / "report.md").is_file()
+    assert (entregable / "report.html").is_file()
+    assert (entregable / "evidence.json").is_file()
+    assert "integridad: verificada" in out
+
+
+def test_deliver_refuses_unknown_session(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    cli.main(["demo", "--db", str(db), "--root", str(root)])
+    capsys.readouterr()
+    rc = cli.main(
+        [
+            "deliver",
+            "--session",
+            "no-existe",
+            "--root",
+            str(root),
+            "--db",
+            str(db),
+            "--dest",
+            str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 1
+    assert "no encontrada" in capsys.readouterr().err
+
+
+def test_deliver_refuses_open_session(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    from m5wireless.session import create_session
+    from m5wireless.store import SQLiteStore
+
+    store = SQLiteStore(db)
+    session = create_session(store, "Sesion viva", root=root)
+    store.close()
+    rc = cli.main(
+        [
+            "deliver",
+            "--session",
+            session.id,
+            "--root",
+            str(root),
+            "--db",
+            str(db),
+            "--dest",
+            str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 1
+    assert "no esta cerrada" in capsys.readouterr().err
+
+
+def test_deliver_refuses_overwrite_and_tampered_evidence(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    session_id, root = _demo_session(tmp_path)
+    dest = tmp_path / "entregables"
+    args = [
+        "deliver",
+        "--session",
+        session_id,
+        "--root",
+        str(root),
+        "--db",
+        str(tmp_path / "demo.db"),
+        "--dest",
+        str(dest),
+    ]
+    cli.main(args)
+    capsys.readouterr()
+    assert cli.main(args) == 1
+    assert "ya existe" in capsys.readouterr().err
+    assert cli.main(args + ["--force"]) == 0
+
+    directory = root / session_id
+    (directory / "report.md").write_text("manipulado", encoding="utf-8")
+    assert cli.main(args + ["--force"]) == 1
+    assert "evidencia no verifica" in capsys.readouterr().err
