@@ -47,6 +47,7 @@ def evaluate(ctx: RuleContext) -> list[FindingDraft]:
         evidencia: dict[str, Any] = {
             "ssid_duplicado": ssid,
             "bssids": sorted(bssids),
+            "sospechoso": sospechosa.bssid,
             "variantes": [
                 {"bssid": n.bssid, "seguridad": n.security, "canal": n.channel, "rssi": n.rssi}
                 for n in sorted(nets, key=lambda n: n.bssid)
@@ -59,7 +60,10 @@ def evaluate(ctx: RuleContext) -> list[FindingDraft]:
                 RULE_VERSION,
                 "alta",
                 f"Posible gemelo malicioso de '{ssid}' (BSSID {sospechosa.bssid})",
-                {"bssid": sospechosa.bssid, "ssid": ssid},
+                # El activo se clavea por SSID + el BSSID minimo del grupo: asi la
+                # misma pareja de APs da el mismo hallazgo aunque se evalue desde
+                # un contexto con datos de seguridad o desde el store puro.
+                {"bssid": min(bssids), "ssid": ssid},
                 evidencia,
                 "Verificar fisicamente el punto de acceso. Un SSID legitimo con otro "
                 "BSSID y seguridad distinta es la firma de un AP falso: los clientes "

@@ -36,7 +36,10 @@ def test_evil_twin_fires_and_blames_the_weaker_later_bssid() -> None:
     hits = evil_twin.evaluate(ctx)
     assert len(hits) == 1
     assert hits[0].severidad == "alta"
-    assert hits[0].activo == {"bssid": "aa:bb:cc:dd:ee:01", "ssid": "Oficina-A"}
+    # El activo se clavea por SSID + BSSID minimo (clave estable entre contextos);
+    # el BSSID sospechoso queda en la evidencia.
+    assert hits[0].activo == {"bssid": "11:22:33:44:55:01", "ssid": "Oficina-A"}
+    assert hits[0].evidencia["sospechoso"] == "aa:bb:cc:dd:ee:01"
     assert hits[0].evidencia["referencia"] == "11:22:33:44:55:01"
     assert len(hits[0].evidencia["bssids"]) == 2
 

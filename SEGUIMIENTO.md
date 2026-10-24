@@ -4,11 +4,11 @@ Documento de seguimiento para vaciar contexto sin perder el hilo. Cada fase/camb
 lleva su **mini prompt**: bloques copy-paste para situar a un agente en sesión nueva
 tras overflow de contexto, sin necesidad de compactar.
 
-Última actualización: 2026-10-24 — plan de mejora P0/P1/P2 ejecutado en 7 tareas
-(seguridad web, responsive, consola, importador y export); 269 tests, ruff +
-mypy --strict limpios. Última release publicada: v3.4.0 (sin cambios de version).
-Arrancada la fase A (consola de evaluación: sesiones, hallazgos e informes) en la
-rama `feat/wifi-assessment`; `main` intacta. Plan y decisiones en el vault
+Última actualización: 2026-10-24 — fase A (consola de evaluación: sesiones,
+hallazgos, informes, evidencia, API, UI, integraciones) cerrada en la rama
+`feat/wifi-assessment` con 385 tests, ruff + mypy --strict limpios y version
+`3.5.0` preparada (tag/release pendiente del OK del usuario). `main` intacta.
+Última release publicada: v3.4.0. Plan y decisiones en el vault
 `40-IA\PROYECTOS\m5wireless\` (indice `000_m5wireless.md`).
 Roadmap actual: seccion 'Continuar' — unificacion de fuentes; quedan los
 items 2 (Marauder WebUI) y 3 (IQ HackRF), ambos gated por
@@ -427,6 +427,38 @@ Trabajo no gated: roadmap de unificacion (items 2 y 3 siguen gated por hardware)
 - Home del blog (`content/index.md`): enlace directo a `github.com/PoisonXploIT/m5wireless`.
 - La carpeta local sigue siendo `C:\Users\Sammi\m5stick-wireless-viewer` (no renombrada;
   el remote ya apunta al nuevo nombre).
+
+### v3.5.0 — consola de evaluacion WiFi (fase A; pendiente de tag/release)
+
+Cambios:
+- **Sesiones**: `Session`/`SessionStatus` en el store (SQLite + memoria),
+  `create_session`/`close_session`/`get_live_session`, carpetas
+  `data/sessions/<id>/` con `session.json`, `findings.json`, `report.md`,
+  `report.html`, `evidence.json`, `hashes.json` y `artifacts/`.
+- **Catalogo de reglas (v1)**: 10 reglas puras (`WIFI-OPEN`, `WIFI-WEP`,
+  `WIFI-WPS`, `WIFI-HIDDEN`, `WIFI-EVILTWIN`, `WIFI-CLIENT-OPEN`,
+  `WIFI-OUI-INFRA`, `WIFI-CHANNEL-CONGESTION`, `WIFI-TRANSIENT`,
+  `WIFI-CONFIG-DRIFT`) con deduplicacion determinista por
+  `(rule_id, sesion, activo)` y caso negativo en cada fixture.
+- **Informes**: Markdown y HTML autocontenido (sin CDN ni JS, HTML escapado),
+  orden por severidad, evidencia con SHA-256 y `verify_evidence()`.
+- **API**: sesiones, hallazgos, triaje, informe y evidencia
+  (`/api/sessions*`, `/api/findings*`, `/api/sessions/{id}/report`,
+  `/api/sessions/{id}/evidence`, `/api/sessions/{id}/findings.csv`).
+- **UI**: `/evaluacion` con alta de sesion, cierre con evaluacion, contadores,
+  triaje (abierto/aceptado/falso positivo/corregido), descarga del informe y
+  tabla de hashes. axe-core: 0 violaciones; sin desbordamiento a 390 px.
+- **Integraciones**: webhooks `session.closed` (Discord y generic, allowlist,
+  `http` solo loopback), CSV de hallazgos y demo Docker
+  (`docker compose up` → sesion cerrada con 5 hallazgos).
+- **CLI**: `close`, `findings`, `demo [--serve]` y `report` con verificacion de
+  integridad.
+- Bugs corregidos: `SQLiteStore` thread-safe para el threadpool de FastAPI;
+  `make_finding_id` incluye la sesion; el activo de `WIFI-EVILTWIN` se clavea
+  por SSID + BSSID minimo para que la misma pareja de APs no genere dos
+  hallazgos segun el contexto.
+- Tests: 385 passed, 2 skipped (33 nuevos sobre sesiones, reglas, informes,
+  API, UI, webhooks, CSV y e2e).
 
 ### v3.4.0 — importador de capturas desde el dashboard (publicada en PyPI)
 

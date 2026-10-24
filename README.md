@@ -1,10 +1,49 @@
 # m5wireless
 
-Pipeline de datos y dashboard para firmwares de hardware hacking WiFi en ESP32.
+Pipeline de datos y consola de evaluacion WiFi para firmwares de hardware
+hacking en ESP32 (Marauder, Evil-M5Project, Bruce, ...).
 
 Fusiona `wifi-marauder-viewer` y `Visualizacion_extendida_M5StickPlus2` sobre una
-arquitectura modular: parsers por firmware, fuentes serial/file, store con
-historico (SQLite), API web (FastAPI + SSE) y exporter a Splunk HEC.
+arquitectura modular: parsers por firmware, fuentes serial/file/SD/WebUI,
+store con historico (SQLite), API web (FastAPI + SSE), catalogo de reglas de
+hallazgos, informes Markdown/HTML con evidencia verificable y exporter a
+Splunk HEC.
+
+## Consola de evaluacion (en 5 minutos)
+
+```bash
+m5wireless demo --serve          # sesion cerrada con 5 hallazgos de ejemplo
+# abrir http://localhost:8000/evaluacion
+```
+
+Flujo real con hardware o con un log:
+
+```bash
+m5wireless run --source serial --port COM3      # captura y dashboard
+# en /evaluacion: crear sesion (nombre, cliente, lugar, alcance) y pulsar
+# "Cerrar y evaluar": se aplica el catalogo, se generan los hallazgos y el
+# informe. Cada hallazgo se tria (abierto / aceptado / falso positivo /
+# corregido) y se descarga en Markdown o HTML.
+```
+
+Sin interfaz:
+
+```bash
+m5wireless close --session 20261024-demo --csv hallazgos.csv
+m5wireless report --session 20261024-demo --fmt md,html
+m5wireless findings --session 20261024-demo --output hallazgos.csv
+```
+
+Cada sesion deja en `data/sessions/<id>/`: `session.json`, `findings.json`,
+`report.md`, `report.html`, `evidence.json`, `hashes.json` y `artifacts/`. El
+informe sale listo para el cliente y la integridad se comprueba con SHA-256:
+`m5wireless report --session <id>` devuelve `integridad: verificada`.
+
+El catalogo (10 reglas: red abierta, WEP, WPS, SSID oculto, gemelo malicioso,
+cliente en red abierta, OUI de infraestructura, congestion de canal, red
+transitoria, deriva de configuracion) esta documentado en
+[docs/reglas.md](docs/reglas.md). Regla de oro: si el firmware no entrega el
+dato, la regla no se escribe.
 
 ## Conectar tu dispositivo
 
@@ -33,6 +72,9 @@ dashboard listo para probarse. Si ya tienes un log grabado:
 
 ## Estado
 
+v3.5.0: consola de evaluacion (`/evaluacion`) con sesiones, hallazgos, triaje,
+informe Markdown/HTML autocontenido, evidencia con hashes, export CSV y
+webhooks (Discord/generic). v3.4.0: importador de capturas desde el dashboard.
 v3.0.1: claridad de conexion (`m5wireless ports`, salida explicita al arrancar,
 widget de estado en el dashboard, modo `--demo`). v3.0.0: modelos, parsers,
 stores, fuentes, colector, dashboard web en vivo (SSE), export CSV/JSON, CLI
@@ -190,15 +232,17 @@ spool a disco opcional (`max_queue_size`/`spool_path`) y circuit breaker tras fa
 consecutivos. `verify=True` por defecto; desactivar la verificacion TLS es solo
 vía configuracion explicita (`verify_ssl = false`).
 
-## Docker (modo file por defecto)
+## Docker
 
 ```bash
-docker compose up -d m5wireless          # dashboard en http://localhost:8000
-docker compose --profile splunk up -d    # con Splunk para pruebas HEC
+docker compose up                 # demo: sesion cerrada con 5 hallazgos en :8000
+docker compose up -d m5wireless   # dashboard sobre ./data/scan.log
+docker compose --profile splunk up -d
 ```
 
-La captura serial en vivo se recomienda como host nativo (USB); el log lo aporta
-el volumen `./data` (`/data/scan.log`).
+La demo (`m5wireless demo --serve`) deja una sesion evaluada lista para
+inspeccionar en `http://localhost:8000/evaluacion`. La captura serial en vivo
+se recomienda como host nativo (USB); el log lo aporta el volumen `./data`.
 
 ## Firmwares soportados
 
