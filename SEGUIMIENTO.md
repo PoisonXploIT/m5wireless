@@ -943,8 +943,24 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   mypy --strict sobre `src/m5wireless` limpios. Demo verificada a mano:
   `data/sessions/20261024-demo/` con `session.json`, `findings.json`,
   `hashes.json` y `artifacts/` tras cerrar la sesion del fixture.
-- **Paso 2 (pendiente)**: `findings/` con `base.py`, `registry.py`, `engine.py`
-  y una regla por fichero; 10 reglas con fixture y caso negativo.
+- **Paso 2 (COMPLETO, 2026-10-24)**: `src/m5wireless/findings/` con `base.py`
+  (`RuleContext`, `NetworkFact`, `ClientFact`, `FindingDraft`, `Rule`),
+  `registry.py` (`RULES` ordenadas, `CATALOG_VERSION = 1`) y `engine.py`
+  (`evaluate_session`, `context_from_store`, `context_from_fixture`). Una regla
+  por fichero en `findings/rules/`: open, wep, wps, hidden, evil_twin,
+  client_open, oui_infra, channel_congestion, transient, config_drift. Todas
+  puras: sin red, sin disco, sin store.
+  Deduplicacion por `(rule_id, activo)` con id determinista; reevaluar no crea
+  duplicados ni borra el triaje. `Active` gana el campo `canal` (la regla de
+  congestion se identifica por canal, no por BSSID).
+  OUI-INFRA usa el bit 'locally assigned' del primer octeto (norma IEEE), no una
+  lista de marcas: no se afirman fabricantes que no podemos comprobar.
+  Aceptacion verificada: el fixture demo da **exactamente 5 hallazgos**
+  (OPEN, WEP, EVILTWIN, CLIENT-OPEN, TRANSIENT), 0 duplicados, y cada regla tiene
+  su caso negativo. 29 tests nuevos en `tests/test_findings_*.py` (323 passed,
+  2 skipped); ruff y mypy --strict limpios.
+- **Paso 3 (pendiente)**: `report/` (contexto, Markdown, HTML autocontenido) y
+  `evidence.py` con hashes verificables.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

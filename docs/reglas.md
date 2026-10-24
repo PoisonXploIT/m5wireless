@@ -12,7 +12,7 @@ No se infiere lo que el firmware no entrega.
 |---|---|---|---|---|
 | WIFI-OPEN | alta | Network | seguridad `open`/`none` | implementada |
 | WIFI-WEP | alta | Network | seguridad `wep` | implementada |
-| WIFI-WPS | media | Network | flag `wps` si el parser lo aporta | aplazada: ningun parser actual entrega WPS |
+| WIFI-WPS | media | Network | flag `wps` si el parser lo aporta | registrada; solo dispara si la fuente aporta el flag (ningun parser de log lo da hoy) |
 | WIFI-HIDDEN | info | Network | SSID vacio con BSSID visible | implementada |
 | WIFI-EVILTWIN | alta | Network | mismo SSID, BSSID distinto y (seguridad o canal distinto) | implementada |
 | WIFI-CLIENT-OPEN | alta | Network + Client | cliente asociado a una red abierta | implementada |

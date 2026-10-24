@@ -12,7 +12,7 @@
       "seen_count": 12
     },
     {
-      "bssid": "aa:bb:cc:dd:ee:01",
+      "bssid": "a8:bb:cc:dd:ee:01",
       "ssid": "Oficina-A",
       "channel": 1,
       "rssi": -55,
@@ -59,7 +59,7 @@
   "clients": [
     {
       "mac": "aa:aa:aa:aa:aa:01",
-      "bssid": "aa:bb:cc:dd:ee:01",
+      "bssid": "a8:bb:cc:dd:ee:01",
       "first_seen": "2026-10-24T09:14:00+00:00",
       "last_seen": "2026-10-24T09:32:00+00:00"
     },
@@ -88,14 +88,14 @@
     {
       "timestamp": "2026-10-24T09:12:00+00:00",
       "event_type": "network_seen",
-      "bssid": "aa:bb:cc:dd:ee:01",
+      "bssid": "a8:bb:cc:dd:ee:01",
       "firmware": "marauder",
       "source": "file"
     },
     {
       "timestamp": "2026-10-24T09:14:00+00:00",
       "event_type": "client_associated",
-      "bssid": "aa:bb:cc:dd:ee:01",
+      "bssid": "a8:bb:cc:dd:ee:01",
       "client_mac": "aa:aa:aa:aa:aa:01",
       "firmware": "marauder",
       "source": "file"

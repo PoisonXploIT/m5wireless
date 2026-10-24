@@ -201,9 +201,10 @@ class Active:
     bssid: str | None = None
     ssid: str | None = None
     client_mac: str | None = None
+    canal: str | None = None
 
     def key(self) -> str:
-        parts = [v for v in (self.bssid, self.ssid, self.client_mac) if v is not None]
+        parts = [v for v in (self.bssid, self.ssid, self.client_mac, self.canal) if v is not None]
         return "|".join(parts)
 
 
