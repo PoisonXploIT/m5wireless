@@ -169,7 +169,7 @@ def test_primary_button_text_meets_contrast(client: TestClient) -> None:
 def test_network_page_has_h1(client: TestClient) -> None:
     """U3: /network abre con un h1 visible; el SSID sigue siendo h2."""
     body = client.get("/network").text
-    assert "<h1 class=\"detail-heading\">Detalle de red</h1>" in body
+    assert '<h1 class="detail-heading">Detalle de red</h1>' in body
     assert body.count("<h1") == 1
     assert 'id="detail-ssid" class="detail-title"' in body
 
@@ -217,6 +217,69 @@ def test_flex_rows_wrap_at_mobile_width(client: TestClient) -> None:
     assert _has_rule(css, ".panel-actions", "flex-wrap: wrap")
     assert _has_rule(css, ".footer", "flex-wrap: wrap")
     assert _has_rule(css, ".panel-head", "flex-wrap: wrap")
+
+
+def test_console_has_follow_button_and_search(client: TestClient) -> None:
+    """P1.6: la consola tiene boton 'seguir' (auto-scroll) y caja de busqueda."""
+    body = client.get("/").text
+    assert 'id="console-follow"' in body
+    assert 'id="console-search"' in body
+    assert 'aria-pressed="true"' in body  # el boton expone su estado a lectores de pantalla
+    assert 'id="console-search-count"' in body
+    js = client.get("/static/js/dashboard.js").text
+    assert 'followBtn.setAttribute("aria-pressed", String(follow))' in js
+    # Con 'seguir' activo la consola va al final; con ite parado no se mueve.
+    assert "if (follow) consoleEl.scrollTop = consoleEl.scrollHeight" in js
+    assert "nearBottom" not in js  # ya no hay auto-scroll condicion: manda el boton
+
+
+def test_console_search_highlights_through_dom_not_innerhtml(client: TestClient) -> None:
+    """P1.6: el resaltado se monta por DOM (createTextNode + <mark>), nunca innerHTML."""
+    js = client.get("/static/js/dashboard.js").text
+    start = js.index("function setLineText(")
+    body = js[start : js.index("function updateSearchCount()", start)]
+    assert 'document.createElement("mark")' in body
+    assert "innerHTML" not in body
+    assert "createTextNode" in body
+    assert 'mark.className = "hl"' in body
+    # La busqueda se aplica tambien a las lineas que llegan por SSE (rerender + setLineText).
+    assert "setLineText(txt, entry.text)" in js
+    assert "function rerenderConsole()" in js
+
+
+def test_console_highlight_meets_contrast(client: TestClient) -> None:
+    """El resaltado (ambar #f2c14e con texto #14181f) supera 4.5:1 en cualquier tema."""
+    css = client.get(_CSS).text
+    rule = _rule(css, "mark.hl")
+    fg = rule.split("color:")[1].split(";")[0].strip()
+    bg = rule.split("background:")[1].split(";")[0].strip()
+    assert _contrast(fg, bg) >= 4.5
+    assert _has_rule(css, ".console-search", "font-family: var(--mono)")
+
+
+def test_filters_persist_in_url_and_localstorage(client: TestClient) -> None:
+    """P1.7: los filtros se escriben en la URL (?ssid=, ?ch=) y se leen al recargar."""
+    js = client.get("/static/js/dashboard.js").text
+    assert "URLSearchParams" in js
+    assert "window.history.replaceState" in js
+    for key in ("ssid", "ch", "rssi", "clients"):
+        assert f'params.set("{key}"' in js
+    assert "urlCarriesFilters()" in js
+    assert "filtersFromUrl()" in js
+    # La URL manda sobre localStorage (vista compartida), y al cambiar un filtro
+    # se sincronizan ambas cosas.
+    assert "La URL manda" in js
+    assert js.count("syncUrlFromFilters()") >= 4  # init, filtros, chips y orden
+    assert "FILTERS_STORAGE_KEY" in js
+    assert "CONSOLE_STORAGE_KEY" in js  # 'seguir' y la busqueda tambien se recuerdan
+
+
+def test_url_filters_do_not_touch_the_sse_stream(client: TestClient) -> None:
+    """P1.7: los filtros son de cliente; el SSE sigue apuntando a /api/events limpio."""
+    js = client.get("/static/js/dashboard.js").text
+    assert 'new EventSource("/api/events")' in js
+    assert 'EventSource("/api/events?' not in js
+    assert 'replaceState({}, "", window.location.pathname' in js
 
 
 # Nota: el orden/limit de `get_recent_observations` en SQLiteStore esta cubierto

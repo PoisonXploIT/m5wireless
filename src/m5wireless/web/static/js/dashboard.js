@@ -18,6 +18,7 @@
   const SPARK_BUCKETS = 30;
   const LIVE_THRESHOLD_MS = 30 * 1000; // "activa ahora" si se vio hace <30 s
   const FILTERS_STORAGE_KEY = "m5wireless.filters";
+  const CONSOLE_STORAGE_KEY = "m5wireless.console";
   const SKELETON_ROWS = 6;
   const TOAST_MS = 5000;
   const TOAST_DEDUPE_MS = 8000; // anti-spam: mismo mensaje dentro de esta ventana se descarta
@@ -46,6 +47,10 @@
   const filterRssi = $("filter-rssi");
   const filterClients = $("filter-clients");
   const chipsEl = $("filter-chips");
+  const consoleSearchEl = $("console-search");
+  const consoleSearchCountEl = $("console-search-count");
+  const followBtn = $("console-follow");
+  const followLabel = $("console-follow-label");
 
   // ---- utilidades ----
 
@@ -137,6 +142,12 @@
   const consoleLines = [];
   const pendingLines = [];
   let consolePaused = false;
+  // P1.6: "seguir" (auto-scroll) y busqueda con resaltado. `follow` es el estado
+  // del boton; `consoleQuery` es la busqueda activa (en minusculas, sin recortar
+  // por dentro de la linea). Ambos se guardan en localStorage.
+  let follow = true;
+  let consoleQuery = "";
+  let searchHits = 0;
   const consoleTypeClass = {
     network_seen: "txt-net",
     client_associated: "txt-client",
@@ -156,15 +167,58 @@
   }
 
   function renderConsoleLine(entry) {
-    const nearBottom =
-      consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight < 40;
     consoleLines.push(entry);
     if (consoleLines.length > MAX_CONSOLE_LINES) {
       consoleLines.shift();
       if (consoleEl.firstElementChild) consoleEl.firstElementChild.remove();
     }
     consoleEl.appendChild(consoleLineEl(entry));
-    if (nearBottom) consoleEl.scrollTop = consoleEl.scrollHeight;
+    // Con "seguir" activo la consola va siempre al final; con ite parado la
+    // lectura no se mueve aunque lleguen lineas nuevas.
+    if (follow) consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+
+  // Escribe `text` en `span` resaltando las coincidencias con la busqueda.
+  // Todo por DOM (createTextNode + <mark>), nunca innerHTML: un texto con `<img
+  // src=x onerror=alert(1)>` se pinta literal (misma disciplina que S5).
+  function setLineText(span, text) {
+    span.textContent = "";
+    if (!consoleQuery) {
+      span.textContent = text;
+      return;
+    }
+    let rest = text;
+    for (;;) {
+      const idx = rest.toLowerCase().indexOf(consoleQuery);
+      if (idx < 0) break;
+      if (idx > 0) span.appendChild(document.createTextNode(rest.slice(0, idx)));
+      const mark = document.createElement("mark");
+      mark.className = "hl";
+      mark.textContent = rest.slice(idx, idx + consoleQuery.length);
+      span.appendChild(mark);
+      searchHits += 1;
+      rest = rest.slice(idx + consoleQuery.length);
+    }
+    if (rest) span.appendChild(document.createTextNode(rest));
+  }
+
+  function updateSearchCount() {
+    if (!consoleQuery) {
+      consoleSearchCountEl.hidden = true;
+      consoleSearchCountEl.textContent = "";
+      return;
+    }
+    consoleSearchCountEl.hidden = false;
+    consoleSearchCountEl.textContent = searchHits === 0 ? "sin coincidencias" : `${searchHits}`;
+  }
+
+  // Re-pinta la consola entera aplicando la busqueda (500 lineas max: barato).
+  function rerenderConsole() {
+    searchHits = 0;
+    consoleEl.textContent = "";
+    for (const entry of consoleLines) consoleEl.appendChild(consoleLineEl(entry));
+    updateSearchCount();
+    if (follow) consoleEl.scrollTop = consoleEl.scrollHeight;
   }
 
   function consoleLineEl(entry) {
@@ -175,7 +229,7 @@
     ts.textContent = entry.ts ? fmtTime(entry.ts) : "--:--:--";
     const txt = document.createElement("span");
     txt.className = consoleTypeClass[entry.type] || "txt-net";
-    txt.textContent = entry.text;
+    setLineText(txt, entry.text);
     div.append(ts, txt);
     return div;
   }
@@ -204,6 +258,27 @@
       badge.hidden = true;
       badge.textContent = "";
       announce("Consola vaciada");
+    });
+    followBtn.addEventListener("click", () => {
+      follow = !follow;
+      followBtn.classList.toggle("is-on", follow);
+      followBtn.setAttribute("aria-pressed", String(follow));
+      followBtn.title = follow ? "Auto-scroll: la consola sigue el flujo" : "Auto-scroll detenido";
+      followLabel.textContent = follow ? "Seguir" : "Seguir (parado)";
+      saveConsolePrefs();
+      announce(follow ? "Consola siguiendo el flujo" : "Consola parada: no auto-scroll");
+      if (follow) consoleEl.scrollTop = consoleEl.scrollHeight;
+    });
+    consoleSearchEl.addEventListener("input", () => {
+      consoleQuery = consoleSearchEl.value.trim().toLowerCase();
+      rerenderConsole();
+    });
+    consoleSearchEl.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && consoleSearchEl.value) {
+        consoleSearchEl.value = "";
+        consoleQuery = "";
+        rerenderConsole();
+      }
     });
     $("console-copy").addEventListener("click", async () => {
       const text = consoleLines.map((l) => l.text).join("\n");
@@ -761,7 +836,82 @@
     };
   }
 
-  // ---- filtros: persistencia + chips (A6) ----
+  // ---- filtros: persistencia (localStorage + URL) y chips (A6, P1.7) ----
+
+  // La URL es la fuente compartible (?ssid=, ?ch=, ?rssi=, ?clients=1). Si la
+  // URL trae filtros, mandan sobre lo guardado en el navegador: quien pega un
+  // enlace compartido ve exactamente esa vista.
+  const URL_KEYS = { ssid: "text", ch: "channel", rssi: "rssi", clients: "clientsOnly" };
+
+  function filtersFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const out = {};
+    for (const [urlKey, stateKey] of Object.entries(URL_KEYS)) {
+      if (!params.has(urlKey)) continue;
+      const raw = params.get(urlKey) || "";
+      out[stateKey] = urlKey === "clients" ? raw === "1" || raw === "true" : raw;
+    }
+    return out;
+  }
+
+  function urlCarriesFilters() {
+    const params = new URLSearchParams(window.location.search);
+    return Object.keys(URL_KEYS).some((k) => params.has(k));
+  }
+
+  // replaceState (no pushState): la vista se comparte sin llenar el historial
+  // y sin tocar el SSE, que sigue apuntando a /api/events.
+  function syncUrlFromFilters() {
+    const params = new URLSearchParams();
+    const text = filterText.value.trim();
+    if (text) params.set("ssid", text);
+    if (filterChannel.value) params.set("ch", filterChannel.value);
+    if (filterRssi.value.trim()) params.set("rssi", filterRssi.value.trim());
+    if (filterClients.checked) params.set("clients", "1");
+    const qs = params.toString();
+    try {
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    } catch (_err) {
+      // Entornos sin historial: la URL simplemente no se actualiza.
+    }
+  }
+
+  function ensureChannelOption(ch) {
+    const value = String(ch);
+    if (!value) return;
+    for (const opt of filterChannel.options) {
+      if (opt.value === value) return;
+    }
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = `Canal ${value}`;
+    filterChannel.appendChild(opt);
+  }
+
+  function saveConsolePrefs() {
+    try {
+      localStorage.setItem(CONSOLE_STORAGE_KEY, JSON.stringify({ follow, query: consoleQuery }));
+    } catch (_err) {
+      // localStorage no disponible: la preferencia queda solo en memoria.
+    }
+  }
+
+  function loadConsolePrefs() {
+    try {
+      const raw = localStorage.getItem(CONSOLE_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (typeof saved.follow === "boolean") follow = saved.follow;
+        if (typeof saved.query === "string") consoleQuery = saved.query;
+      }
+    } catch (_err) {
+      // valor corrupto: se usan los valores por defecto.
+    }
+    followBtn.classList.toggle("is-on", follow);
+    followBtn.setAttribute("aria-pressed", String(follow));
+    followLabel.textContent = follow ? "Seguir" : "Seguir (parado)";
+    if (consoleQuery) consoleSearchEl.value = consoleQuery;
+  }
 
   function saveFilters() {
     try {
@@ -782,20 +932,34 @@
   }
 
   function loadFilters() {
+    let saved = null;
     try {
       const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
+      if (raw) saved = JSON.parse(raw);
+    } catch (_err) {
+      saved = null; // valor corrupto: se ignoran los filtros guardados
+    }
+    if (saved) {
       if (typeof saved.text === "string") filterText.value = saved.text;
-      if (typeof saved.channel === "string") filterChannel.value = saved.channel;
+      if (typeof saved.channel === "string") {
+        ensureChannelOption(saved.channel);
+        filterChannel.value = saved.channel;
+      }
       if (typeof saved.rssi === "string") filterRssi.value = saved.rssi;
       if (typeof saved.clientsOnly === "boolean") filterClients.checked = saved.clientsOnly;
       // Ordenacion tambien se restaura (volver del detalle, recarga).
       if (typeof saved.sortKey === "string") sortKey = saved.sortKey;
       if (saved.sortDir === "asc" || saved.sortDir === "desc") sortDir = saved.sortDir;
-    } catch (_err) {
-      // valor corrupto: se ignoran los filtros guardados.
     }
+    // La URL manda: es una vista explicita y compartible.
+    const fromUrl = filtersFromUrl();
+    if ("text" in fromUrl) filterText.value = fromUrl.text;
+    if ("channel" in fromUrl) {
+      ensureChannelOption(fromUrl.channel);
+      filterChannel.value = fromUrl.channel;
+    }
+    if ("rssi" in fromUrl) filterRssi.value = fromUrl.rssi;
+    if ("clientsOnly" in fromUrl) filterClients.checked = fromUrl.clientsOnly;
   }
 
   // Chips de filtros activos, con boton de dismiss por filtro.
@@ -834,6 +998,7 @@
         else if (key === "rssi") filterRssi.value = "";
         else if (key === "clients") filterClients.checked = false;
         saveFilters();
+        syncUrlFromFilters();
         renderTable();
         renderChips();
       });
@@ -844,6 +1009,7 @@
 
   function onFilterChanged() {
     saveFilters();
+    syncUrlFromFilters();
     renderChips();
     renderTable();
   }
@@ -867,6 +1033,7 @@
           sortDir = key === "last_seen" || key === "rssi" ? "desc" : "asc";
         }
         saveFilters();
+        syncUrlFromFilters();
         renderTable();
       });
     }
@@ -1030,6 +1197,8 @@
 
   async function init() {
     loadFilters();
+    loadConsolePrefs();
+    syncUrlFromFilters();
     bindControls();
     bindConsoleControls();
     bindImportControls();

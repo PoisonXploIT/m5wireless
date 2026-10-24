@@ -735,6 +735,53 @@ td.time {
   font-size: 0.7rem;
 }
 
+/* ---- P1.6: busqueda con resaltado y boton "seguir" ---- */
+.console-search {
+  min-width: 140px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.console-search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Resaltado: fondo ambar con texto oscuro (contraste ~9:1 sobre el ambar),
+   legible tanto en el tema oscuro como en el claro. */
+.console mark.hl,
+mark.hl {
+  background: #f2c14e;
+  color: #14181f;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.btn.is-on {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.btn.is-on svg {
+  stroke: var(--accent-strong);
+}
+
+.console-note {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.console-note code {
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+
 /* ---- distribucion por canal: heatmap por banda (A7) ---- */
 
 .channels-band + .channels-band {

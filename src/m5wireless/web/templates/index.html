@@ -135,6 +135,16 @@
         <div class="panel-head">
           <h2>Consola serial</h2>
           <div class="panel-actions">
+            <input type="search" id="console-search" class="console-search" placeholder="Buscar en la consola"
+                   aria-label="Buscar en la consola" autocomplete="off">
+            <span id="console-search-count" class="badge" hidden></span>
+            <button type="button" id="console-follow" class="btn btn-sm is-on" title="Auto-scroll: la consola sigue el flujo"
+                    aria-pressed="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14" /><path d="m7 14 5 5 5-5" />
+              </svg>
+              <span id="console-follow-label">Seguir</span>
+            </button>
             <button type="button" id="console-pause" class="btn btn-sm" title="Pausar el streaming">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                 <path d="M9 5v14M15 5v14" />
@@ -157,6 +167,7 @@
           </div>
         </div>
         <div id="console" class="console" aria-live="off"></div>
+        <p class="console-note" id="console-note">Filtros de la tabla se guardan en la URL (<code>?ssid=</code>, <code>?ch=</code>) y en el navegador: se recuperan al recargar.</p>
       </section>
 
       <section class="panel channels-panel" aria-label="Distribución por canal">
