@@ -17,5 +17,9 @@ m5wireless.db
 !tests/fixtures/*.log
 snapshots/
 logs/
+# Sesiones de evaluacion (datos reales de cliente): nunca al git
+/data/sessions/
+reports/
+*.pdf
 .coverage
 htmlcov/

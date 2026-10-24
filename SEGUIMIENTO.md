@@ -7,6 +7,9 @@ tras overflow de contexto, sin necesidad de compactar.
 Última actualización: 2026-10-24 — plan de mejora P0/P1/P2 ejecutado en 7 tareas
 (seguridad web, responsive, consola, importador y export); 269 tests, ruff +
 mypy --strict limpios. Última release publicada: v3.4.0 (sin cambios de version).
+Arrancada la fase A (consola de evaluación: sesiones, hallazgos e informes) en la
+rama `feat/wifi-assessment`; `main` intacta. Plan y decisiones en el vault
+`40-IA\PROYECTOS\m5wireless\` (indice `000_m5wireless.md`).
 Roadmap actual: seccion 'Continuar' — unificacion de fuentes; quedan los
 items 2 (Marauder WebUI) y 3 (IQ HackRF), ambos gated por
 hardware/muestra real.
@@ -906,6 +909,27 @@ siguiente sin cerrar el anterior (tests + smoke del alcance del hito).
   (seccion 'Rediseño visual del dashboard' mas arriba).
 
 ---
+
+## Fase A — consola de evaluacion (sesiones, hallazgos, informes)
+
+Plan completo en el vault: `40-IA\PROYECTOS\m5wireless\PLAN-EJECUCION-2026-10-24.md`.
+Rama de trabajo: `feat/wifi-assessment` (no se toca `main` hasta cerrar el MVP).
+En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
+
+- **Paso 0 (COMPLETO, 2026-10-24)**: rama, `.gitignore` (`data/sessions/`,
+  `reports/`, `*.pdf`), esqueleto de `docs/` (`instalacion.md`, `uso.md`,
+  `reglas.md` con el catalogo de 10 reglas) y fixture versionado
+  `tests/fixtures/assessment/` (`redes.json` + `sesion_demo.json`): red abierta
+  que es gemelo malicioso de una WPA2, una WEP, un cliente en la abierta y una
+  red transitoria. 8 tests nuevos de coherencia del fixture (277 passed, 2
+  skipped); ruff y mypy --strict sobre `src/m5wireless` limpios.
+  Caso negativo cubierto en el fixture: sin WPS, sin SSID oculto, sin congestion
+  de canal (max 2 redes por canal).
+  Nota de gating: `WIFI-WPS` queda aplazada porque ningun parser actual entrega
+  el flag WPS (regla: no escribir reglas sobre datos que el pipeline no produce).
+- **Paso 1 (pendiente)**: `models.py` con `Session`/`Finding`, `store/*` con
+  tablas `sessions` y `findings`, `session.py` con `data/sessions/<id>/` y
+  `hashes.json`, sesion viva implicita para no romper CLI/tests/UI.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

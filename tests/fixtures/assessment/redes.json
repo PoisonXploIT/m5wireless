@@ -1,0 +1,111 @@
+{
+  "networks": [
+    {
+      "bssid": "11:22:33:44:55:01",
+      "ssid": "Oficina-A",
+      "channel": 6,
+      "rssi": -60,
+      "security": "wpa2",
+      "wps": false,
+      "first_seen": "2026-10-24T09:01:00+00:00",
+      "last_seen": "2026-10-24T09:34:00+00:00",
+      "seen_count": 12
+    },
+    {
+      "bssid": "aa:bb:cc:dd:ee:01",
+      "ssid": "Oficina-A",
+      "channel": 1,
+      "rssi": -55,
+      "security": "open",
+      "wps": false,
+      "first_seen": "2026-10-24T09:12:00+00:00",
+      "last_seen": "2026-10-24T09:33:00+00:00",
+      "seen_count": 8
+    },
+    {
+      "bssid": "11:22:33:44:55:02",
+      "ssid": "Legacy-IOT",
+      "channel": 3,
+      "rssi": -70,
+      "security": "wep",
+      "wps": false,
+      "first_seen": "2026-10-24T09:05:00+00:00",
+      "last_seen": "2026-10-24T09:30:00+00:00",
+      "seen_count": 5
+    },
+    {
+      "bssid": "99:88:77:66:55:44",
+      "ssid": "Guest-Printer",
+      "channel": 11,
+      "rssi": -80,
+      "security": "wpa2",
+      "wps": false,
+      "first_seen": "2026-10-24T09:03:00+00:00",
+      "last_seen": "2026-10-24T09:31:00+00:00",
+      "seen_count": 7
+    },
+    {
+      "bssid": "22:33:44:55:66:77",
+      "ssid": "Cafe-Gratis",
+      "channel": 12,
+      "rssi": -90,
+      "security": "wpa2",
+      "wps": false,
+      "first_seen": "2026-10-24T09:20:00+00:00",
+      "last_seen": "2026-10-24T09:20:00+00:00",
+      "seen_count": 1
+    }
+  ],
+  "clients": [
+    {
+      "mac": "aa:aa:aa:aa:aa:01",
+      "bssid": "aa:bb:cc:dd:ee:01",
+      "first_seen": "2026-10-24T09:14:00+00:00",
+      "last_seen": "2026-10-24T09:32:00+00:00"
+    },
+    {
+      "mac": "bb:bb:bb:bb:bb:02",
+      "bssid": "11:22:33:44:55:01",
+      "first_seen": "2026-10-24T09:02:00+00:00",
+      "last_seen": "2026-10-24T09:33:00+00:00"
+    }
+  ],
+  "observations": [
+    {
+      "timestamp": "2026-10-24T09:01:00+00:00",
+      "event_type": "network_seen",
+      "bssid": "11:22:33:44:55:01",
+      "firmware": "marauder",
+      "source": "file"
+    },
+    {
+      "timestamp": "2026-10-24T09:05:00+00:00",
+      "event_type": "network_seen",
+      "bssid": "11:22:33:44:55:02",
+      "firmware": "marauder",
+      "source": "file"
+    },
+    {
+      "timestamp": "2026-10-24T09:12:00+00:00",
+      "event_type": "network_seen",
+      "bssid": "aa:bb:cc:dd:ee:01",
+      "firmware": "marauder",
+      "source": "file"
+    },
+    {
+      "timestamp": "2026-10-24T09:14:00+00:00",
+      "event_type": "client_associated",
+      "bssid": "aa:bb:cc:dd:ee:01",
+      "client_mac": "aa:aa:aa:aa:aa:01",
+      "firmware": "marauder",
+      "source": "file"
+    },
+    {
+      "timestamp": "2026-10-24T09:20:00+00:00",
+      "event_type": "network_seen",
+      "bssid": "22:33:44:55:66:77",
+      "firmware": "marauder",
+      "source": "file"
+    }
+  ]
+}

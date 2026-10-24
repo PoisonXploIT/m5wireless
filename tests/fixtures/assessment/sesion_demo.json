@@ -1,0 +1,22 @@
+{
+  "id": "20261024-demo",
+  "nombre": "Auditoria WiFi demo (fixture de pruebas)",
+  "cliente": "",
+  "operador": "Sammi",
+  "lugar": "Oficina de pruebas",
+  "alcance": "Redes autorizadas del laboratorio. Uso interno.",
+  "dispositivo": "marauder-m5stick-1",
+  "source": "file",
+  "inicio": "2026-10-24T09:00:00+00:00",
+  "fin": "2026-10-24T09:35:00+00:00",
+  "estado": "cerrada",
+  "version_app": "3.5.0",
+  "fixture": "redes.json",
+  "expected_findings": [
+    "WIFI-OPEN",
+    "WIFI-WEP",
+    "WIFI-EVILTWIN",
+    "WIFI-CLIENT-OPEN",
+    "WIFI-TRANSIENT"
+  ]
+}
