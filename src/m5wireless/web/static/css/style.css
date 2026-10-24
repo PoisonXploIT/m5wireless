@@ -1473,3 +1473,123 @@ tr.skeleton-row td {
   color: var(--text-faint);
   font-size: 0.75rem;
 }
+
+/* Importador con progreso (X1) */
+.import-progress {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.import-progress-head .mono {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.import-bar {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  overflow: hidden;
+}
+
+.import-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.import-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.import-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.import-result.ok {
+  color: var(--text-dim);
+}
+
+.import-result.fail {
+  color: var(--rssi-bad);
+}
+
+.import-result-meta {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
+/* Dialogo de export (X2) */
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.export-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.export-options {
+  display: flex;
+  gap: 6px;
+}
+
+.export-count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.export-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.splunk-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.splunk-status.warn {
+  color: var(--rssi-bad);
+}
+
+.splunk-status.ok {
+  color: var(--rssi-good);
+}

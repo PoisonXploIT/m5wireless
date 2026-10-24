@@ -38,6 +38,7 @@ from .security import (
     resolve_browse_roots,
     resolve_session_token,
 )
+from .splunk_export import router as splunk_router
 from .sse import EventHub
 from .sse import router as sse_router
 
@@ -165,8 +166,10 @@ def create_app(
     app.state.store = store
     app.state.hub = hub
     app.state.collector = collector
+    app.state.exporter = exporter
     app.include_router(api_router)
     app.include_router(sse_router)
+    app.include_router(splunk_router)
 
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

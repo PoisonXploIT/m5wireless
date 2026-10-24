@@ -7,7 +7,10 @@ temporal es un caso real de importacion.
 
 from __future__ import annotations
 
+import json
 import os
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -58,7 +61,9 @@ def client(seeded_store: MemoryStore, tmp_path: Path) -> TestClient:
 
 
 @pytest.fixture
-def client_with_collector(seeded_store: MemoryStore, marauder_log_path: Path, tmp_path: Path) -> TestClient:
+def client_with_collector(
+    seeded_store: MemoryStore, marauder_log_path: Path, tmp_path: Path
+) -> TestClient:
     """App con collector (no arrancado: submit_events funciona igual)."""
     source = FileSource(str(marauder_log_path), follow=False)
     collector = Collector(source, get_parser("marauder"), seeded_store, source_type="file")
@@ -113,7 +118,10 @@ def test_browse_missing_dir(client: TestClient, tmp_path: Path) -> None:
     Fuera de la raiz se responde 403 ANTES de comprobar la existencia: no se
     confirma (ni se niega) que `C:/Windows` exista, solo que no es navegable.
     """
-    assert client.get("/api/fs/browse", params={"path": str(tmp_path / "no-existe")}).status_code == 404
+    assert (
+        client.get("/api/fs/browse", params={"path": str(tmp_path / "no-existe")}).status_code
+        == 404
+    )
     assert client.get("/api/fs/browse", params={"path": "Z:/no/existe/nada"}).status_code == 403
 
 
@@ -160,10 +168,16 @@ def test_import_unsupported_extension(client_with_collector: TestClient, tmp_pat
 
 
 def test_import_missing_path(client_with_collector: TestClient, tmp_path: Path) -> None:
-    assert client_with_collector.post(
-        "/api/import", json={"path": str(tmp_path / "no-existe.pcap")}
-    ).status_code == 404
-    assert client_with_collector.post("/api/import", json={"path": "Z:/no/existe.pcap"}).status_code == 403
+    assert (
+        client_with_collector.post(
+            "/api/import", json={"path": str(tmp_path / "no-existe.pcap")}
+        ).status_code
+        == 404
+    )
+    assert (
+        client_with_collector.post("/api/import", json={"path": "Z:/no/existe.pcap"}).status_code
+        == 403
+    )
 
 
 def test_import_without_collector(client: TestClient, tmp_path: Path) -> None:
@@ -181,6 +195,7 @@ def test_fs_endpoints_require_loopback(client: TestClient, monkeypatch: pytest.M
     assert client.get("/api/fs/browse").status_code == 403
     res = client.post("/api/import", json={"path": "C:/x.pcap"})
     assert res.status_code == 403
+
 
 # ---- raices permitidas (P0.2: M5W_BROWSE_ROOTS) ----
 
@@ -240,7 +255,9 @@ def test_browse_rejects_symlink_out_of_root(client: TestClient, tmp_path: Path) 
     assert "escape" not in {entry["name"] for entry in listing["entries"]}
 
 
-def test_data_dir_is_a_root_by_default(seeded_store: MemoryStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_data_dir_is_a_root_by_default(
+    seeded_store: MemoryStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Sin `M5W_BROWSE_ROOTS`, `data/` (el `data_dir`) y el perfil son navegables."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -259,7 +276,9 @@ def test_data_dir_is_a_root_by_default(seeded_store: MemoryStore, tmp_path: Path
         assert test_client.get("/api/fs/browse", params={"path": "../../"}).status_code == 400
 
 
-def test_browse_roots_env_var(seeded_store: MemoryStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_browse_roots_env_var(
+    seeded_store: MemoryStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`M5W_BROWSE_ROOTS` sustituye las raices por defecto."""
     sd = tmp_path / "sd"
     sd.mkdir()
@@ -270,7 +289,9 @@ def test_browse_roots_env_var(seeded_store: MemoryStore, tmp_path: Path, monkeyp
         paths = {entry["path"] for entry in test_client.get("/api/fs/browse").json()["entries"]}
         assert paths == {str(sd.resolve()), str(tmp_path.resolve())}
         assert test_client.get("/api/fs/browse", params={"path": str(sd)}).status_code == 200
-        assert test_client.get("/api/fs/browse", params={"path": str(Path.home())}).status_code == 403
+        assert (
+            test_client.get("/api/fs/browse", params={"path": str(Path.home())}).status_code == 403
+        )
 
 
 def test_import_rejects_path_outside_roots(client_with_collector: TestClient) -> None:
@@ -279,7 +300,9 @@ def test_import_rejects_path_outside_roots(client_with_collector: TestClient) ->
     assert client_with_collector.post("/api/import", json={"path": "../x.pcap"}).status_code == 400
 
 
-def test_import_rejects_symlink_out_of_root(client_with_collector: TestClient, tmp_path: Path) -> None:
+def test_import_rejects_symlink_out_of_root(
+    client_with_collector: TestClient, tmp_path: Path
+) -> None:
     inside = tmp_path / "dentro"
     inside.mkdir()
     outside = tmp_path.parent / "fuera"
@@ -293,7 +316,9 @@ def test_import_rejects_symlink_out_of_root(client_with_collector: TestClient, t
         pytest.skip("el sistema no permite crear symlinks (Windows sin permisos)")
     res = client_with_collector.post("/api/import", json={"path": str(link)})
     assert res.status_code == 403
-    assert not any(n["ssid"] == "FUERA" for n in client_with_collector.get("/api/networks").json()["networks"])
+    assert not any(
+        n["ssid"] == "FUERA" for n in client_with_collector.get("/api/networks").json()["networks"]
+    )
 
 
 def test_import_caps_at_200_files(client_with_collector: TestClient, tmp_path: Path) -> None:
@@ -321,3 +346,126 @@ def test_import_is_serialised(client_with_collector: TestClient, tmp_path: Path)
     res = client_with_collector.post("/api/import", json={"path": str(pcap)})
     assert res.status_code == 200
     assert res.json()["files"] == 1
+
+
+# ---- progreso por fichero y cancelacion (X1) ----
+
+
+def _ndjson_lines(text: str) -> list[dict[str, object]]:
+    """Objetos NDJSON de una respuesta, uno por linea no vacia."""
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def test_import_stream_reports_progress_per_file(
+    client_with_collector: TestClient, tmp_path: Path
+) -> None:
+    """Con `stream: true`: una linea por fichero y el resumen al final (X1)."""
+    folder = tmp_path / "sd"
+    folder.mkdir()
+    for i in range(3):
+        (folder / f"cap{i}.pcap").write_bytes(_valid_pcap(f"RED{i}"))
+    (folder / "roto.pcap").write_bytes(b"no es un pcap")
+
+    before = client_with_collector.get("/api/export/count").json()["observations"]
+    res = client_with_collector.post("/api/import", json={"path": str(folder), "stream": True})
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/x-ndjson")
+    items = _ndjson_lines(res.text)
+    assert items[0] == {"type": "start", "total": 4}
+    per_file = [item for item in items if item["type"] == "file"]
+    assert [item["index"] for item in per_file] == [1, 2, 3, 4]
+    assert [item["total"] for item in per_file] == [4, 4, 4, 4]
+    assert [item["name"] for item in per_file] == [
+        "cap0.pcap",
+        "cap1.pcap",
+        "cap2.pcap",
+        "roto.pcap",
+    ]
+    assert sum(1 for item in per_file if item["ok"]) == 3
+    assert sum(item["events"] for item in per_file) == 6
+    done = items[-1]
+    assert done["type"] == "done"
+    assert done["files"] == 3 and done["events"] == 6 and done["errors"] == 1
+    assert done["cancelled"] is False and done["skipped"] == 0
+    assert len(done["results"]) == 4
+    assert done["results"][3]["ok"] is False and "roto.pcap" in done["messages"][0]
+    # Los eventos importados llegan al store: 6 pcaps sinteticos x 2 eventos.
+    # (Todos comparten el mismo BSSID, asi que se ve una sola red nueva: lo que
+    # cuenta aqui es el numero de observaciones.)
+    after = client_with_collector.get("/api/export/count").json()["observations"]
+    assert after - before == 6
+
+
+def test_import_without_stream_keeps_the_old_shape(
+    client_with_collector: TestClient, tmp_path: Path
+) -> None:
+    """Sin `stream` sigue habiendo un JSON unico (compatibilidad con la CLI)."""
+    pcap = tmp_path / "solo.pcap"
+    pcap.write_bytes(_valid_pcap("SIN_STREAM"))
+    res = client_with_collector.post("/api/import", json={"path": str(pcap)})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["files"] == 1 and body["events"] == 2
+    assert body["cancelled"] is False
+
+
+def test_import_cancel_stops_between_files(
+    client_with_collector: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cancelacion a media: el import para entre ficheros y informa de los omitidos.
+
+    El parser se ralentiza a proposito (200 ms por fichero) para que la cancelacion
+    llegue mientras el import sigue vivo: sin retardo, 6 pcaps minimos se parsean
+    en milisegundos y ya habria terminado.
+    """
+    folder = tmp_path / "muchos"
+    folder.mkdir()
+    for i in range(6):
+        (folder / f"cap{i}.pcap").write_bytes(_valid_pcap(f"RED{i}"))
+
+    from m5wireless.parser import pcap as pcap_module
+
+    original_parse = pcap_module.PcapParser.parse
+
+    def slow_parse(self, data: bytes, *, source: str = "file") -> list[object]:
+        time.sleep(0.2)
+        return original_parse(self, data, source=source)
+
+    monkeypatch.setattr(pcap_module.PcapParser, "parse", slow_parse)
+
+    summary: dict[str, object] = {}
+
+    def run_import() -> None:
+        with client_with_collector.stream(
+            "POST", "/api/import", json={"path": str(folder), "stream": True}
+        ) as res:
+            for line in res.iter_lines():
+                if not line:
+                    continue
+                item = json.loads(line)
+                if item["type"] == "done":
+                    summary.update(item)
+
+    thread = threading.Thread(target=run_import)
+    thread.start()
+    time.sleep(0.5)
+    cancel = client_with_collector.post("/api/import/cancel")
+    assert cancel.status_code == 200
+    assert cancel.json() == {"active": True, "requested": True}
+    thread.join(timeout=10)
+
+    assert summary, "el stream no cerró con el resumen"
+    assert summary["cancelled"] is True
+    assert 0 < summary["files"] < 6
+    assert summary["skipped"] == 6 - summary["files"]
+    # La lock queda libre y el flag se limpia: el siguiente import arranca normal.
+    assert api_module._IMPORT_RUNNING is False
+    res = client_with_collector.post("/api/import", json={"path": str(folder / "cap0.pcap")})
+    assert res.status_code == 200
+
+
+def test_import_cancel_with_nothing_running(client_with_collector: TestClient) -> None:
+    """Cancelar sin import en curso: 200 y active=false (no es un error)."""
+    res = client_with_collector.post("/api/import/cancel")
+    assert res.status_code == 200
+    assert res.json() == {"active": False, "requested": False}

@@ -100,6 +100,12 @@ class SplunkHecExporter:
 
     # ---- API pública ----
     @property
+    def config(self) -> SplunkHecConfig:
+        """Configuración del exporter (la lee el dashboard para la prueba de
+        conexión; el token nunca se imprime)."""
+        return self._config
+
+    @property
     def verify(self) -> bool:
         """Verificación TLS configurada (``True`` por defecto)."""
         return self._config.verify

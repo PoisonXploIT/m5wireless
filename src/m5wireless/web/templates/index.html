@@ -190,18 +190,12 @@
         </svg>
         Importar
       </button>
-      <a class="btn btn-primary" href="/api/export/csv" download>
+      <button type="button" id="export-open" class="btn btn-primary">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 3v12" /><path d="m7 11 5 5 5-5" /><path d="M4 19h16" />
         </svg>
-        Export CSV
-      </a>
-      <a class="btn" href="/api/export/json" download>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3v12" /><path d="m7 11 5 5 5-5" /><path d="M4 19h16" />
-        </svg>
-        Export JSON
-      </a>
+        Exportar
+      </button>
       <a class="btn btn-ghost" href="/api/health">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 12h4l2 6 4-14 2 8h6" />
@@ -222,10 +216,57 @@
           <span class="modal-crumbs-spacer"></span>
           <button type="button" id="import-dir" class="btn btn-sm btn-primary" disabled>Importar carpeta</button>
         </div>
+        <div id="import-progress" class="import-progress" hidden>
+          <div class="import-progress-head">
+            <span id="import-progress-label" class="mono">importando…</span>
+            <button type="button" id="import-cancel" class="btn btn-sm btn-ghost">Cancelar</button>
+          </div>
+          <div class="import-bar" role="progressbar" aria-label="Progreso de importacion">
+            <div id="import-bar-fill" class="import-bar-fill" style="width: 0%"></div>
+          </div>
+          <ul id="import-results" class="import-results" aria-live="polite"></ul>
+        </div>
         <ul id="import-list" class="import-list"></ul>
         <p class="modal-note">
           Importa pcaps grabados (SD montada, capturas sueltas). Los eventos
           entran en vivo en la tabla y la consola, igual que una fuente binaria.
+        </p>
+      </div>
+    </div>
+
+    <div id="export-modal" class="modal" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <div class="modal-head">
+          <h2 id="export-title">Exportar historico</h2>
+          <button type="button" id="export-close" class="btn btn-sm btn-ghost" aria-label="Cerrar exportador">×</button>
+        </div>
+        <div class="export-form">
+          <div class="export-field">
+            <span class="export-label">Formato</span>
+            <div class="export-options" role="group" aria-label="Formato de exportacion">
+              <button type="button" id="export-format-csv" class="btn btn-sm btn-primary" data-format="csv" aria-pressed="true">CSV</button>
+              <button type="button" id="export-format-json" class="btn btn-sm" data-format="json" aria-pressed="false">JSON</button>
+            </div>
+          </div>
+          <div class="export-field">
+            <span class="export-label">Alcance</span>
+            <div class="export-options" role="group" aria-label="Alcance de la exportacion">
+              <button type="button" id="export-scope-filtered" class="btn btn-sm btn-primary" data-scope="filtered" aria-pressed="true">Filtrado</button>
+              <button type="button" id="export-scope-all" class="btn btn-sm" data-scope="all" aria-pressed="false">Todo</button>
+            </div>
+          </div>
+          <p id="export-count" class="export-count mono">0 observaciones</p>
+          <div class="export-actions">
+            <button type="button" id="export-download" class="btn btn-primary">Descargar</button>
+            <button type="button" id="export-splunk-test" class="btn btn-ghost">Probar conexion Splunk</button>
+            <button type="button" id="export-splunk-send" class="btn btn-ghost" disabled>Enviar a Splunk</button>
+          </div>
+          <p id="splunk-status" class="splunk-status" role="status" aria-live="polite">Splunk: sin configurar</p>
+        </div>
+        <p class="modal-note">
+          "Filtrado" aplica los filtros de la tabla (SSID, canal, RSSI). "Todo"
+          saca el historico completo. El envio a Splunk usa el HEC configurado
+          (M5W_SPLUNK_HEC_URL / M5W_SPLUNK_HEC_TOKEN).
         </p>
       </div>
     </div>

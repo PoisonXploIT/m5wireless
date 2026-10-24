@@ -72,8 +72,10 @@ SECURITY_HEADERS: tuple[tuple[str, bytes], ...] = (
     ("x-frame-options", b"DENY"),
     (
         "permissions-policy",
-        b"camera=(), microphone=(), geolocation=(), interest-topic=(), "
-        b"payment=(), usb=(), sensor=(), autoplay=(), storage=()",
+        (
+            b"camera=(), microphone=(), geolocation=(), interest-topic=(), "
+            b"payment=(), usb=(), sensor=(), autoplay=(), storage=()"
+        ),
     ),
 )
 

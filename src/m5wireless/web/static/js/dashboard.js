@@ -1046,6 +1046,11 @@
   const importPathEl = $("import-path");
   const importUpBtn = $("import-up");
   const importDirBtn = $("import-dir");
+  const importProgress = $("import-progress");
+  const importBarFill = $("import-bar-fill");
+  const importProgressLabel = $("import-progress-label");
+  const importResults = $("import-results");
+  const importCancelBtn = $("import-cancel");
   let importBusy = false;
 
   function fmtSize(bytes) {
@@ -1132,6 +1137,70 @@
     importList.appendChild(frag);
   }
 
+  function addImportResult(item) {
+    const pct = item.total > 0 ? Math.round((item.index / item.total) * 100) : 0;
+    importBarFill.style.width = `${pct}%`;
+    importProgressLabel.textContent = `${item.index} / ${item.total}: ${item.name}`;
+    const li = document.createElement("li");
+    li.className = `import-result ${item.ok ? "ok" : "fail"}`;
+    const name = document.createElement("span");
+    name.textContent = item.name;
+    const meta = document.createElement("span");
+    meta.className = "import-result-meta mono";
+    meta.textContent = item.ok ? `${item.events} eventos` : item.error || "error";
+    li.append(name, meta);
+    importResults.appendChild(li);
+  }
+
+  async function readNdjson(res) {
+    // Lee el NDJSON del import y devuelve el resumen de la linea `done`.
+    // Se lee con el reader, no con res.text(): asi la barra se actualiza cada
+    // vez que el servidor termina un fichero (progreso en vivo, X1).
+    if (!res.body) return res.json().catch(() => ({}));
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let summary = null;
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let nl = buffer.indexOf("\n");
+      while (nl >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        nl = buffer.indexOf("\n");
+        if (!line) continue;
+        let item;
+        try {
+          item = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (item.type === "start") {
+          importProgressLabel.textContent = `0 / ${item.total} ficheros`;
+        } else if (item.type === "file") {
+          addImportResult(item);
+        } else if (item.type === "done") {
+          summary = item;
+        } else {
+          summary = item; // el {detail: ...} de un error
+        }
+      }
+    }
+    const tail = buffer.trim();
+    if (tail) {
+      try {
+        const item = JSON.parse(tail);
+        if (item.type === "done") summary = item;
+        else if (!summary) summary = item;
+      } catch {
+        /* linea incompleta: el resumen ya esta recogido */
+      }
+    }
+    return summary || {};
+  }
+
   async function doImport(path, btn) {
     if (importBusy) return;
     importBusy = true;
@@ -1139,25 +1208,30 @@
     const orig = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Importando…";
+    importProgress.hidden = false;
+    importResults.textContent = "";
+    importBarFill.style.width = "0%";
+    importProgressLabel.textContent = "preparando…";
+    importCancelBtn.disabled = false;
     try {
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, stream: true }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await readNdjson(res);
       if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-      const detail =
-        data.errors > 0 && data.messages.length > 0 ? ` — ${data.messages[0]}` : "";
+      const detail = data.errors > 0 && data.messages.length > 0 ? ` — ${data.messages[0]}` : "";
+      const cancelNote = data.cancelled ? ` (cancelado: ${data.skipped} sin importar)` : "";
       showToast(
-        `Importados ${data.events} eventos de ${data.files} pcap(s)${detail}`,
-        data.errors > 0 ? "warn" : "info"
+        `Importados ${data.events} eventos de ${data.files} pcap(s)${detail}${cancelNote}`,
+        data.cancelled ? "warn" : data.errors > 0 ? "warn" : "info"
       );
-      closeImport();
     } catch (err) {
       showToast(`Import fallido: ${err.message}`, "error");
     } finally {
       importBusy = false;
+      importCancelBtn.disabled = true;
       btn.disabled = false;
       btn.textContent = orig;
       importDirBtn.disabled = false;
@@ -1184,12 +1258,175 @@
       const path = importDirBtn.dataset.path;
       if (path) doImport(path, importDirBtn);
     });
+    importCancelBtn.addEventListener("click", async () => {
+      // El servidor para ENTRE ficheros: un pcap se parsea entero o no se toca.
+      importCancelBtn.disabled = true;
+      importProgressLabel.textContent = "cancelando…";
+      try {
+        await fetch("/api/import/cancel", { method: "POST" });
+      } catch (err) {
+        showToast(`No se pudo cancelar: ${err.message}`, "error");
+      }
+    });
     // Cierre con ESC y clic fuera del dialogo.
     importModal.addEventListener("click", (e) => {
       if (e.target === importModal) closeImport();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !importModal.hidden) closeImport();
+    });
+  }
+
+  // ---- export con dialogo (X2: formato, alcance, Splunk) ----
+
+  const exportModal = $("export-modal");
+  const exportCountEl = $("export-count");
+  const splunkStatusEl = $("splunk-status");
+  const exportSendBtn = $("export-splunk-send");
+  const exportTestBtn = $("export-splunk-test");
+  let exportFormat = "csv";
+  let exportScope = "filtered";
+
+  function filterParams() {
+    const params = new URLSearchParams();
+    const text = filterText.value.trim();
+    if (text) params.set("ssid", text);
+    if (filterChannel.value) params.set("channel", filterChannel.value);
+    if (filterRssi.value) params.set("min_rssi", filterRssi.value);
+    return params;
+  }
+
+  function exportParams() {
+    return exportScope === "filtered" ? filterParams() : new URLSearchParams();
+  }
+
+  function pressGroup(group, chosen) {
+    for (const button of group) {
+      const on = button === chosen;
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+      button.classList.toggle("btn-primary", on);
+    }
+  }
+
+  async function refreshExportCount() {
+    const query = exportParams().toString();
+    try {
+      const data = await fetchJSON(`/api/export/count${query ? `?${query}` : ""}`);
+      exportCountEl.textContent = `${data.observations} observaciones (${data.networks} redes, alcance ${data.scope})`;
+    } catch (err) {
+      exportCountEl.textContent = `No se pudo calcular el alcance: ${err.message}`;
+    }
+  }
+
+  function downloadExport() {
+    const query = exportParams().toString();
+    const url = `/api/export/${exportFormat}${query ? `?${query}` : ""}`;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `observations-${exportFormat}.${exportFormat}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast(`Export ${exportFormat} (${exportScope}) descargado`, "info");
+  }
+
+  async function splunkStatus() {
+    try {
+      const data = await fetchJSON("/api/export/splunk/status");
+      if (!data.configured) {
+        splunkStatusEl.textContent = "Splunk: sin configurar (M5W_SPLUNK_HEC_URL / M5W_SPLUNK_HEC_TOKEN)";
+        splunkStatusEl.className = "splunk-status warn";
+        exportSendBtn.disabled = true;
+        return;
+      }
+      splunkStatusEl.textContent = `Splunk: configurado (${data.url})${data.queued ? `, ${data.queued} en cola` : ""}`;
+      splunkStatusEl.className = "splunk-status";
+      exportSendBtn.disabled = false;
+    } catch (err) {
+      splunkStatusEl.textContent = `Splunk: no se pudo leer el estado (${err.message})`;
+      splunkStatusEl.className = "splunk-status warn";
+    }
+  }
+
+  async function testSplunk() {
+    exportTestBtn.disabled = true;
+    exportTestBtn.textContent = "Probando…";
+    try {
+      const res = await fetch("/api/export/splunk/test", { method: "POST" });
+      const data = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+      splunkStatusEl.textContent = data.ok ? `Splunk: OK (${data.message})` : `Splunk: FALLO (${data.message})`;
+      splunkStatusEl.className = `splunk-status ${data.ok ? "ok" : "warn"}`;
+      exportSendBtn.disabled = !data.ok;
+    } catch (err) {
+      splunkStatusEl.textContent = `Splunk: FALLO (${err.message})`;
+      splunkStatusEl.className = "splunk-status warn";
+    } finally {
+      exportTestBtn.disabled = false;
+      exportTestBtn.textContent = "Probar conexion Splunk";
+    }
+  }
+
+  async function sendToSplunk() {
+    exportSendBtn.disabled = true;
+    exportSendBtn.textContent = "Enviando…";
+    try {
+      const body = { format: exportFormat, scope: exportScope, ...Object.fromEntries(exportParams()) };
+      const res = await fetch("/api/export/splunk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+      splunkStatusEl.textContent = data.ok
+        ? `Splunk: ${data.message} (${data.sent}/${data.total})`
+        : `Splunk: FALLO (${data.message})`;
+      splunkStatusEl.className = `splunk-status ${data.ok ? "ok" : "warn"}`;
+      showToast(data.ok ? data.message : `Envio a Splunk fallido: ${data.message}`, data.ok ? "info" : "error");
+    } catch (err) {
+      splunkStatusEl.textContent = `Splunk: FALLO (${err.message})`;
+      splunkStatusEl.className = "splunk-status warn";
+    } finally {
+      exportSendBtn.disabled = false;
+      exportSendBtn.textContent = "Enviar a Splunk";
+    }
+  }
+
+  function openExport() {
+    exportModal.hidden = false;
+    refreshExportCount();
+    splunkStatus();
+  }
+
+  function closeExport() {
+    exportModal.hidden = true;
+  }
+
+  function bindExportControls() {
+    $("export-open").addEventListener("click", openExport);
+    $("export-close").addEventListener("click", closeExport);
+    $("export-download").addEventListener("click", downloadExport);
+    exportTestBtn.addEventListener("click", testSplunk);
+    exportSendBtn.addEventListener("click", sendToSplunk);
+    const formatButtons = [$("export-format-csv"), $("export-format-json")];
+    const scopeButtons = [$("export-scope-filtered"), $("export-scope-all")];
+    for (const button of formatButtons) {
+      button.addEventListener("click", () => {
+        exportFormat = button.dataset.format;
+        pressGroup(formatButtons, button);
+      });
+    }
+    for (const button of scopeButtons) {
+      button.addEventListener("click", () => {
+        exportScope = button.dataset.scope;
+        pressGroup(scopeButtons, button);
+        refreshExportCount();
+      });
+    }
+    exportModal.addEventListener("click", (e) => {
+      if (e.target === exportModal) closeExport();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !exportModal.hidden) closeExport();
     });
   }
 
@@ -1202,6 +1439,7 @@
     bindControls();
     bindConsoleControls();
     bindImportControls();
+    bindExportControls();
     renderChips();
     showSkeletons();
     try {

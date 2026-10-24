@@ -282,6 +282,71 @@ def test_url_filters_do_not_touch_the_sse_stream(client: TestClient) -> None:
     assert 'replaceState({}, "", window.location.pathname' in js
 
 
+def test_import_modal_has_progress_bar_and_cancel(client: TestClient) -> None:
+    """X1: el modal de importacion muestra progreso por fichero y boton de parar."""
+    body = client.get("/").text
+    for element_id in ("import-progress", "import-bar-fill", "import-results", "import-cancel"):
+        assert f'id="{element_id}"' in body
+    assert 'role="progressbar"' in body
+    assert 'aria-label="Progreso de importacion"' in body
+    assert 'aria-live="polite"' in body
+    assert 'id="import-cancel" class="btn btn-sm btn-ghost"' in body
+    # El progreso se pinta por DOM, no con innerHTML (no hay XSS en los nombres).
+    js = client.get("/static/js/dashboard.js").text
+    assert "addImportResult(item)" in js
+    assert "importBarFill.style.width" in js
+    assert "readNdjson(res)" in js
+    assert '"/api/import/cancel"' in js
+
+
+def test_export_is_a_dialog_not_two_links(client: TestClient) -> None:
+    """X2: Exportar abre un dialogo (formato + alcance) en lugar de dos enlaces."""
+    body = client.get("/").text
+    assert 'id="export-open"' in body
+    assert 'id="export-modal"' in body
+    assert 'aria-labelledby="export-title"' in body
+    assert 'data-format="csv"' in body and 'data-format="json"' in body
+    assert 'data-scope="filtered"' in body and 'data-scope="all"' in body
+    assert 'aria-pressed=' in body
+    assert 'id="export-count"' in body
+    assert 'id="export-splunk-test"' in body
+    assert 'id="export-splunk-send"' in body
+    # Ya no hay enlaces sueltos a /api/export/csv y /api/export/json en la barra.
+    assert '<a class="btn btn-primary" href="/api/export/csv"' not in body
+    assert '<a class="btn" href="/api/export/json"' not in body
+
+
+def test_export_dialog_and_progress_have_css(client: TestClient) -> None:
+    """Los elementos nuevos del import/export tienen su estilo definido."""
+    css = client.get("/static/css/style.css").text
+    for selector in (
+        ".import-progress",
+        ".import-bar-fill",
+        ".import-results",
+        ".import-result.fail",
+        ".export-form",
+        ".export-options",
+        ".export-count",
+        ".splunk-status.warn",
+        ".splunk-status.ok",
+    ):
+        assert selector in css
+    # La barra usa una transicion y el ancho variable: sin eso no hay progreso.
+    assert "transition: width" in css
+
+
+def test_export_dialog_reads_the_table_filters(client: TestClient) -> None:
+    """X2: el alcance 'filtrado' reutiliza los filtros de la tabla (SSID/canal/RSSI)."""
+    js = client.get("/static/js/dashboard.js").text
+    assert "function filterParams()" in js
+    for key in ("ssid", "channel", "min_rssi"):
+        assert f'params.set("{key}"' in js
+    assert "/api/export/count" in js
+    assert "/api/export/splunk/status" in js
+    assert "/api/export/splunk/test" in js
+    assert "/api/export/splunk" in js
+
+
 # Nota: el orden/limit de `get_recent_observations` en SQLiteStore esta cubierto
 # por test_store.py (parametrizado memoria/SQLite); no se repite aqui porque la
 # conexion SQLite no puede cruzar el hilo del portal de TestClient.

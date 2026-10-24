@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import threading
 from collections.abc import Iterator
 from datetime import datetime
@@ -24,19 +25,21 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from ..models import normalize_mac
+from ..models import ObservationEvent, normalize_mac
 from ..store.base import AbstractStore, ObservationRow
 from ..worker.collector import Collector
-from .security import is_within_roots, resolve_browse_roots
 from .schemas import (
     ChannelDistributionResponse,
     ClientRead,
     CollectorStats,
     ConsoleResponse,
+    ExportCountResponse,
     FsBrowseResponse,
     FsEntry,
     HealthResponse,
     HistoryRow,
+    ImportCancelResponse,
+    ImportFileResult,
     ImportRequest,
     ImportResponse,
     NetworkDetail,
@@ -48,6 +51,7 @@ from .schemas import (
     network_detail,
     network_read,
 )
+from .security import is_within_roots, resolve_browse_roots
 
 router = APIRouter()
 
@@ -163,6 +167,12 @@ _BROWSE_MAX_ENTRIES = 1000
 # Un solo import a la vez: el parseo es CPU-bound y dos a la vez saturan el
 # collector y el store. `acquire(blocking=False)` = 409 inmediato si ya hay uno.
 _IMPORT_LOCK = threading.Lock()
+# Cancelacion (X1): la UI llama a /api/import/cancel y el bucle se para ENTRE
+# ficheros (no a mitad de un pcap: un pcap se parsea entero o no se toca).
+# `_IMPORT_RUNNING` se pone al arrancar el bucle y se limpia en el `finally`,
+# incluido si el navegador cierra la conexion a mitad del stream.
+_IMPORT_CANCEL = threading.Event()
+_IMPORT_RUNNING = False
 
 
 def _require_local(request: Request) -> None:
@@ -262,13 +272,104 @@ def browse_fs(request: Request, path: str | None = Query(None)) -> FsBrowseRespo
     return FsBrowseResponse(path=str(root), parent=parent, entries=entries)
 
 
-@router.post("/api/import", response_model=ImportResponse)
-def import_captures(request: Request, body: ImportRequest) -> ImportResponse:
+def _import_candidates(target: Path, roots: tuple[Path, ...]) -> list[Path]:
+    """Ficheros a importar: un pcap suelto o la carpeta (recursiva)."""
+    if target.is_dir():
+        return [
+            path
+            for path in sorted(target.rglob("*"))
+            if path.is_file()
+            and path.name.lower().endswith(_IMPORT_EXTENSIONS)
+            and is_within_roots(path.resolve(), roots)
+        ]
+    if target.name.lower().endswith(_IMPORT_EXTENSIONS):
+        return [target]
+    raise HTTPException(status_code=422, detail="extension no soportada (solo .pcap/.cap)")
+
+
+def _run_import(
+    candidates: list[Path], collector: Collector, summary: ImportResponse
+) -> Iterator[dict[str, object]]:
+    """Generador de progreso: una linea por fichero y la ultima, el resumen.
+
+    Es un generador `def` (no async): FastAPI lo iterar en el threadpool, y
+    si el navegador cierra la conexion el generador se cierra y el `finally`
+    suelta la lock. La cancelacion se comprueba ENTRE ficheros: un pcap se
+    parsea entero, no se interrumpe a mitad.
+    """
+    global _IMPORT_RUNNING
+    from ..parser.pcap import PcapParseError, PcapParser
+
+    parser = PcapParser()
+    results: list[ImportFileResult] = []
+    cancelled = False
+    total = len(candidates)
+    yield {"type": "start", "total": total}
+    try:
+        for index, path in enumerate(candidates, start=1):
+            if _IMPORT_CANCEL.is_set():
+                cancelled = True
+                break
+            error: str | None = None
+            events: list[ObservationEvent] = []
+            try:
+                if path.stat().st_size > _IMPORT_MAX_BYTES:
+                    error = "supera 64 MiB, omitido"
+                else:
+                    events = parser.parse(path.read_bytes(), source="sdcard")
+            except PcapParseError as exc:
+                error = str(exc)
+            except OSError as exc:
+                error = f"no legible ({exc})"
+            if error is None:
+                summary.files += 1
+                summary.events += len(events)
+                collector.submit_events(events)
+            else:
+                summary.errors += 1
+                summary.messages.append(f"{path.name}: {error}")
+            result = ImportFileResult(name=path.name, ok=error is None, events=len(events), error=error)
+            results.append(result)
+            yield {
+                "type": "file",
+                "index": index,
+                "total": total,
+                "name": path.name,
+                "ok": result.ok,
+                "events": result.events,
+                "error": error,
+            }
+    finally:
+        _IMPORT_RUNNING = False
+        _IMPORT_LOCK.release()
+        _IMPORT_CANCEL.clear()
+    yield {
+        "type": "done",
+        "files": summary.files,
+        "events": summary.events,
+        "errors": summary.errors,
+        "messages": summary.messages[:20],
+        "results": [r.model_dump() for r in results],
+        "cancelled": cancelled,
+        "skipped": total - len(results),
+    }
+    summary.results = results
+    summary.cancelled = cancelled
+    summary.skipped = total - len(results)
+
+
+@router.post("/api/import", response_model=None)
+def import_captures(request: Request, body: ImportRequest) -> ImportResponse | StreamingResponse:
     """Parsea un pcap o una carpeta de pcaps y los vuelca al pipeline en vivo.
 
     `def` (no `async`): FastAPI lo ejecuta en el threadpool, y el parseo de
     pcaps es CPU-bound. Los eventos entran por `collector.submit_events`, asi
     que llegan a store + SSE igual que los de una fuente binaria.
+
+    Con `stream: true` responde NDJSON (X1): `{"type":"start",...}`, una linea
+    por fichero y la ultima `{"type":"done",...}` con el resumen por archivo.
+    Sin `stream`, el resumen JSON de siempre. El progreso se puede cancelar con
+    `POST /api/import/cancel`.
 
     Limites (P0.2): solo rutas dentro de `M5W_BROWSE_ROOTS`, maximo 200 ficheros
     por import y un import concurrente (409 si ya va uno).
@@ -283,65 +384,40 @@ def import_captures(request: Request, body: ImportRequest) -> ImportResponse:
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"ruta no existe: {target}")
 
-    if target.is_dir():
-        candidates = [
-            path
-            for path in sorted(target.rglob("*"))
-            if path.is_file()
-            and path.name.lower().endswith(_IMPORT_EXTENSIONS)
-            and is_within_roots(path.resolve(), _browse_roots(request))
-        ]
-    elif target.name.lower().endswith(_IMPORT_EXTENSIONS):
-        candidates = [target]
-    else:
-        raise HTTPException(status_code=422, detail="extension no soportada (solo .pcap/.cap)")
+    candidates = _import_candidates(target, _browse_roots(request))
     if len(candidates) > _IMPORT_MAX_FILES:
         raise HTTPException(
             status_code=422,
             detail=f"demasiados ficheros ({len(candidates)}); maximo {_IMPORT_MAX_FILES} por import",
         )
     if not candidates:
-        return ImportResponse(files=0, events=0, errors=0, messages=[])
+        return ImportResponse(files=0, events=0, errors=0, messages=[], results=[])
 
     if not _IMPORT_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="ya hay una importacion en curso")
+    global _IMPORT_RUNNING
+    _IMPORT_RUNNING = True
+    _IMPORT_CANCEL.clear()
+    summary = ImportResponse(files=0, events=0, errors=0, messages=[], results=[])
+    stream = _run_import(candidates, collector, summary)
+    if body.stream:
+        return StreamingResponse(
+            (json.dumps(item, ensure_ascii=False) + "\n" for item in stream),
+            media_type="application/x-ndjson",
+        )
+    for _ in stream:
+        pass
+    return summary
 
-    from ..parser.pcap import PcapParseError, PcapParser
 
-    parser = PcapParser()
-    counts = {"files": 0, "events": 0, "errors": 0}
-    messages: list[str] = []
-
-    def ingest(path: Path) -> None:
-        try:
-            if path.stat().st_size > _IMPORT_MAX_BYTES:
-                counts["errors"] += 1
-                messages.append(f"{path.name}: supera 64 MiB, omitido")
-                return
-            events = parser.parse(path.read_bytes(), source="sdcard")
-        except PcapParseError as exc:
-            counts["errors"] += 1
-            messages.append(f"{path.name}: {exc}")
-            return
-        except OSError as exc:
-            counts["errors"] += 1
-            messages.append(f"{path.name}: no legible ({exc})")
-            return
-        counts["files"] += 1
-        counts["events"] += len(events)
-        collector.submit_events(events)
-
-    try:
-        for path in candidates:
-            ingest(path)
-    finally:
-        _IMPORT_LOCK.release()
-    return ImportResponse(
-        files=counts["files"],
-        events=counts["events"],
-        errors=counts["errors"],
-        messages=messages[:20],
-    )
+@router.post("/api/import/cancel", response_model=ImportCancelResponse)
+def cancel_import(request: Request) -> ImportCancelResponse:
+    """Pide la parada del import en curso (X1: cancelacion del modal)."""
+    _require_local(request)
+    active = _IMPORT_RUNNING
+    if active:
+        _IMPORT_CANCEL.set()
+    return ImportCancelResponse(active=active, requested=active)
 
 
 # ---- redes ----
@@ -446,15 +522,68 @@ def _iter_csv_chunks(rows: Iterator[ObservationRow], batch_size: int = 500) -> I
         yield tail
 
 
+def _filtered_rows(
+    store: AbstractStore,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+    ssid: str | None = None,
+    channel: int | None = None,
+    min_rssi: int | None = None,
+    firmware: str | None = None,
+) -> Iterator[ObservationRow]:
+    r"""Observaciones del alcance "filtrado" del dialogo de export (X2).
+
+    Son los filtros que maneja la tabla del dashboard (texto de SSID, canal,
+    RSSI minimo, firmware) aplicados server-side, para que el CSV/JSON exportado
+    coincida con lo que se ve en pantalla. Sin filtros = alcance "todo".
+    """
+    rows = store.iter_observations(since=since, until=until)
+    if ssid is None and channel is None and min_rssi is None and firmware is None:
+        yield from rows
+        return
+    nets = {net.bssid: net for net in store.get_networks(since=since, until=until) if net.bssid}
+    needle = ssid.lower() if ssid else None
+    for row in rows:
+        if firmware is not None and row.firmware != firmware:
+            continue
+        if min_rssi is not None and (row.rssi is None or row.rssi < min_rssi):
+            continue
+        if needle is not None or channel is not None:
+            net = nets.get(row.bssid) if row.bssid else None
+            if net is None:
+                continue
+            if needle is not None and needle not in (net.ssid or "").lower():
+                continue
+            if channel is not None and net.channel != channel:
+                continue
+        yield row
+
+
 @router.get("/api/export/csv")
 def export_csv(
     store: AbstractStore = Depends(get_store),
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
+    ssid: str | None = Query(None, description="texto del SSID (substring, sin mayusculas)"),
+    channel: int | None = Query(None),
+    min_rssi: int | None = Query(None),
+    firmware: str | None = Query(None),
 ) -> StreamingResponse:
-    """Historico completo en CSV, streaming por lotes (no carga todo en memoria)."""
+    r"""Historico en CSV, streaming por lotes (no carga todo en memoria).
+
+    Sin filtros = "todo"; con filtros = "filtrado" (dialogo de export, X2)."""
+    rows = _filtered_rows(
+        store,
+        since=since,
+        until=until,
+        ssid=ssid,
+        channel=channel,
+        min_rssi=min_rssi,
+        firmware=firmware,
+    )
     return StreamingResponse(
-        _iter_csv_chunks(store.iter_observations(since=since, until=until)),
+        _iter_csv_chunks(rows),
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="observations.csv"'},
     )
@@ -465,8 +594,50 @@ def export_json(
     store: AbstractStore = Depends(get_store),
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
+    ssid: str | None = Query(None),
+    channel: int | None = Query(None),
+    min_rssi: int | None = Query(None),
+    firmware: str | None = Query(None),
 ) -> list[HistoryRow]:
-    return [history_row(r) for r in store.iter_observations(since=since, until=until)]
+    rows = _filtered_rows(
+        store,
+        since=since,
+        until=until,
+        ssid=ssid,
+        channel=channel,
+        min_rssi=min_rssi,
+        firmware=firmware,
+    )
+    return [history_row(r) for r in rows]
+
+
+@router.get("/api/export/count", response_model=ExportCountResponse)
+def export_count(
+    store: AbstractStore = Depends(get_store),
+    since: datetime | None = Query(None),
+    until: datetime | None = Query(None),
+    ssid: str | None = Query(None),
+    channel: int | None = Query(None),
+    min_rssi: int | None = Query(None),
+    firmware: str | None = Query(None),
+) -> ExportCountResponse:
+    """Cuanto se exportaria con el alcance elegido (lo muestra el dialogo)."""
+    rows = _filtered_rows(
+        store,
+        since=since,
+        until=until,
+        ssid=ssid,
+        channel=channel,
+        min_rssi=min_rssi,
+        firmware=firmware,
+    )
+    observations = sum(1 for _ in rows)
+    filtered = any(v is not None for v in (since, until, ssid, channel, min_rssi, firmware))
+    return ExportCountResponse(
+        observations=observations,
+        networks=len(store.get_networks(since=since, until=until)),
+        scope="filtered" if filtered else "all",
+    )
 
 
 # ---- consola ----

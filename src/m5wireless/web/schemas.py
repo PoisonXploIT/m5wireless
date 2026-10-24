@@ -128,6 +128,18 @@ class FsBrowseResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     path: str
+    stream: bool = False
+    """True: responde NDJSON con una linea por fichero (progreso). False: el
+    resumen JSON de siempre. La UI usa `stream: true` para pintar la barra."""
+
+
+class ImportFileResult(BaseModel):
+    """Resultado de un fichero concreto del import (X1: resumen por archivo)."""
+
+    name: str
+    ok: bool
+    events: int
+    error: str | None = None
 
 
 class ImportResponse(BaseModel):
@@ -135,6 +147,56 @@ class ImportResponse(BaseModel):
     events: int
     errors: int
     messages: list[str]  # detalle por fichero fallido (tope interno)
+    results: list[ImportFileResult] = []
+    cancelled: bool = False
+    skipped: int = 0  # ficheros no llegados por cancelacion
+
+
+class ImportCancelResponse(BaseModel):
+    active: bool
+    requested: bool
+
+
+class ExportCountResponse(BaseModel):
+    """Cuanto se exportaria con el alcance elegido (para el dialogo)."""
+
+    observations: int
+    networks: int
+    scope: str
+
+
+class SplunkStatusResponse(BaseModel):
+    configured: bool
+    url: str | None = None
+    sourcetype: str | None = None
+    verify: bool | None = None
+    queued: int = 0
+
+
+class SplunkTestResponse(BaseModel):
+    ok: bool
+    message: str
+    status_code: int | None = None
+    url: str
+
+
+class SplunkSendRequest(BaseModel):
+    format: str = "json"  # "json" | "csv"
+    scope: str = "all"   # "all" | "filtered"
+    since: datetime | None = None
+    until: datetime | None = None
+    ssid: str | None = None
+    channel: int | None = None
+    min_rssi: int | None = None
+    firmware: str | None = None
+
+
+class SplunkSendResponse(BaseModel):
+    ok: bool
+    sent: int
+    failed: int
+    total: int
+    message: str
 
 
 class ConsoleLine(BaseModel):
