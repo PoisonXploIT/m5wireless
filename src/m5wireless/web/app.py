@@ -9,12 +9,15 @@
   colector, este publica sus eventos via `hub.publish_sync` (thread-safe).
 - Fase 4: `/` sirve `templates/index.html` (dashboard) y `/static` monta
   `web/static` (CSS/JS vanilla, sin frameworks).
+- Seguridad (P0.1): `SecurityMiddleware` valida el `Host` (solo loopback) y
+  exige el token de sesion en `/api/*`; la cookie `m5w_ui` se siembra en `/`
+  y `/network`. Ver `web/security.py`.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..store.base import AbstractStore
 from .api import router as api_router
+from .security import SecurityMiddleware, resolve_allowed_hosts, resolve_session_token
 from .sse import EventHub
 from .sse import router as sse_router
 
@@ -82,12 +86,19 @@ def create_app(
     *,
     collector: Collector | None = None,
     exporter: SplunkHecExporter | None = None,
+    session_token: str | None = None,
+    data_dir: Path | None = None,
+    allowed_hosts: Iterable[str] | None = None,
 ) -> FastAPI:
     """Construye la app.
 
     - `collector` es opcional: sin el, solo lectura/export.
     - `exporter` (Splunk HEC) es opcional: si se pasa, su ciclo de vida corre
       en el lifespan y el colector le reenvia cada evento via `submit`.
+    - `session_token`: token de sesion para `/api/*`. Si no se pasa, se resuelve
+      con `resolve_session_token(data_dir)` (env `M5W_UI_TOKEN`, fichero
+      `.ui_token` en `data_dir`, o generado en memoria).
+    - `allowed_hosts`: hosts admitidos ademas del loopback.
     """
     hub = EventHub()
 
@@ -124,7 +135,16 @@ def create_app(
     from .. import __version__
 
     app = FastAPI(title="m5wireless", version=__version__, lifespan=lifespan)
+    token = session_token if session_token is not None else resolve_session_token(data_dir)
+    # Anadido despues del de cache: va primero (es el mas externo), asi un Host
+    # ajeno o una llamada sin sesion se rechazan antes de tocar el store.
+    app.add_middleware(
+        SecurityMiddleware,
+        session_token=token,
+        allowed_hosts=resolve_allowed_hosts(allowed_hosts),
+    )
     app.add_middleware(_NoCacheMiddleware)
+    app.state.session_token = token
     app.state.store = store
     app.state.hub = hub
     app.state.collector = collector
@@ -135,7 +155,7 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def root() -> FileResponse:
-        """Dashboard (Fase 4): HTML + assets estaticos, sin build step."""
+        """Dashboard (Fase 4): HTML + assets, sin build step; siembra la cookie."""
         return FileResponse(_INDEX_HTML, media_type="text/html")
 
     @app.get("/network", include_in_schema=False)

@@ -11,6 +11,7 @@ import pytest
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
+from web_auth import TEST_TOKEN, auth_client
 
 from m5wireless.parser.registry import get_parser
 from m5wireless.source.file_source import FileSource
@@ -31,9 +32,9 @@ def _ts(value: str) -> datetime:
 @pytest.fixture
 def client(seeded_store: MemoryStore) -> TestClient:
     """App con el store inyectado por dependencia (override, sin estado global)."""
-    app = create_app(seeded_store)
+    app = create_app(seeded_store, session_token=TEST_TOKEN)
     app.dependency_overrides[get_store] = lambda: seeded_store
-    with TestClient(app) as test_client:
+    with auth_client(app) as test_client:
         yield test_client
 
 
@@ -57,8 +58,8 @@ def test_status_without_collector(client: TestClient) -> None:
 def test_status_with_file_collector(seeded_store: MemoryStore, marauder_log_path) -> None:
     source = FileSource(marauder_log_path)
     collector = Collector(source, get_parser("marauder"), seeded_store, source_type="file")
-    app = create_app(seeded_store, collector=collector)
-    with TestClient(app) as test_client:
+    app = create_app(seeded_store, collector=collector, session_token=TEST_TOKEN)
+    with auth_client(app) as test_client:
         res = test_client.get("/api/status")
     assert res.status_code == 200
     body = res.json()

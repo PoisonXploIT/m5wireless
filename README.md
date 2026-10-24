@@ -146,6 +146,28 @@ Solo es navegable desde el propio equipo (localhost): el servidor escucha
 en `0.0.0.0` por defecto para el acceso movil, y el filesystem del
 anfitrion no se expone a la red.
 
+### Sesion de la WebUI (Host validado + token)
+
+Desde la P0.1 de seguridad, la superficie web tiene dos controles:
+
+- **`Host`**: solo se admiten `localhost`, `127.0.0.1` y `::1`. Un `Host`
+  ajeno responde `403`, lo que cierra el DNS rebinding (una pagina externa
+  que resuelva su dominio a 127.0.0.1 no puede hablar con el puerto local).
+  Para acceder por una IP o un nombre de LAN, declaralo: `M5W_ALLOWED_HOSTS`
+  (separado por comas) o `create_app(allowed_hosts=[...])`.
+- **Token de sesion**: `/api/*` (incluido el SSE `/api/events`) exige el token,
+  en la cookie `m5w_ui` (`HttpOnly`, `SameSite=Strict`, emitida al entrar en
+  `/` o `/network`) o en la cabecera `X-M5W-Token` para clientes de script.
+  El token sale de `M5W_UI_TOKEN` o de `<data_dir>/.ui_token` (creado con
+  permisos 0600; `data_dir` es el directorio de la SQLite, o `data/`). Sin
+  sesion, la API responde `401`.
+
+```bash
+m5wireless serve --source serial --port COM3   # sesion: token en .ui_token
+m5wireless serve --source file --log_path scan.log
+# curl -H "X-M5W-Token: $(cat data/.ui_token)" http://localhost:8000/api/networks
+```
+
 ### Seguridad antes de usar la WebUI en campo
 
 Los defaults de fabrica del firmware Bruce son publicos:

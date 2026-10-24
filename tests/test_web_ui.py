@@ -13,6 +13,7 @@ pytest.importorskip("fastapi")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from web_auth import TEST_TOKEN, auth_client
 
 from m5wireless.store import MemoryStore
 from m5wireless.web import create_app
@@ -20,12 +21,12 @@ from m5wireless.web import create_app
 
 @pytest.fixture
 def app(seeded_store: MemoryStore) -> FastAPI:
-    return create_app(seeded_store)
+    return create_app(seeded_store, session_token=TEST_TOKEN)
 
 
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
-    return TestClient(app)
+    return auth_client(app)
 
 
 def test_root_serves_dashboard_html(client: TestClient) -> None:
@@ -41,8 +42,8 @@ def test_root_serves_dashboard_html(client: TestClient) -> None:
 
 
 def test_root_serves_dashboard_with_empty_store() -> None:
-    app = create_app(MemoryStore())
-    with TestClient(app) as client:
+    app = create_app(MemoryStore(), session_token=TEST_TOKEN)
+    with auth_client(app) as client:
         res = client.get("/")
     assert res.status_code == 200
     assert 'id="networks-table"' in res.text

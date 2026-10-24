@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 # Mismos builders sinteticos que tests/test_pcap_parser.py.
 from test_pcap_parser import _build_eapol, _build_mgmt, _wrap_pcap
+from web_auth import TEST_TOKEN, auth_client
 
 from m5wireless.parser.registry import get_parser
 from m5wireless.source.file_source import FileSource
@@ -42,9 +43,9 @@ def _valid_pcap(ssid: str) -> bytes:
 @pytest.fixture
 def client(seeded_store: MemoryStore) -> TestClient:
     """App sin collector (mismo patron que tests/test_api.py)."""
-    app = create_app(seeded_store)
+    app = create_app(seeded_store, session_token=TEST_TOKEN)
     app.dependency_overrides[get_store] = lambda: seeded_store
-    with TestClient(app) as test_client:
+    with auth_client(app) as test_client:
         yield test_client
 
 
@@ -53,9 +54,9 @@ def client_with_collector(seeded_store: MemoryStore, marauder_log_path: Path) ->
     """App con collector (no arrancado: submit_events funciona igual)."""
     source = FileSource(str(marauder_log_path), follow=False)
     collector = Collector(source, get_parser("marauder"), seeded_store, source_type="file")
-    app = create_app(seeded_store, collector=collector)
+    app = create_app(seeded_store, collector=collector, session_token=TEST_TOKEN)
     app.dependency_overrides[get_store] = lambda: seeded_store
-    with TestClient(app) as test_client:
+    with auth_client(app) as test_client:
         yield test_client
 
 

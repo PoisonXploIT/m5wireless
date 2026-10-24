@@ -22,7 +22,8 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
+
+from web_auth import TEST_TOKEN, auth_client
 
 from m5wireless.models import Client, ClientAssociated, Network, NetworkSeen, ObservationEvent
 from m5wireless.parser import get_parser
@@ -113,7 +114,13 @@ def _run_sse(
             "root_path": "",
             "scheme": "http",
             "query_string": b"",
-            "headers": [],
+            # El middleware de seguridad (P0.1) exige Host de loopback y token
+            # en /api/*; el request se monta a mano porque TestClient no sirve
+            # con el streaming de /api/events en este entorno.
+            "headers": [
+                (b"host", b"127.0.0.1:8000"),
+                (b"x-m5w-token", TEST_TOKEN.encode("utf-8")),
+            ],
             "client": ("testclient", 50000),
             "server": ("testserver", 80),
             "state": {},
@@ -162,7 +169,7 @@ def _run_sse(
 
 @pytest.fixture
 def app() -> Any:
-    return create_app(MemoryStore())
+    return create_app(MemoryStore(), session_token=TEST_TOKEN)
 
 
 def test_sse_receives_events_live(app: Any) -> None:
@@ -255,9 +262,9 @@ def test_collector_lifespan_health(marauder_log_path: Path) -> None:
     store = MemoryStore()
     source = FileSource(marauder_log_path, follow=False)
     collector = Collector(source, get_parser("marauder"), store, source_type="file")
-    app = create_app(store, collector=collector)
+    app = create_app(store, collector=collector, session_token=TEST_TOKEN)
 
-    with TestClient(app) as client:
+    with auth_client(app) as client:
         body: dict[str, Any] | None = None
         for _ in range(50):  # el task del colector corre en el mismo loop.
             body = client.get("/api/health").json()

@@ -486,7 +486,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     collector = Collector(source, parser, store, source_type=source_type)
     collector_box["collector"] = collector
     exporter = _build_splunk_exporter(cfg)
-    app = create_app(store, collector=collector, exporter=exporter)
+    # Directorio de datos de la instancia: donde vive `.ui_token` (0600). Con
+    # SQLite es el directorio de la BD; sin ella, `data/` junto al CWD.
+    data_dir = Path(str(db_path)).parent if db_path else Path("data")
+    app = create_app(store, collector=collector, exporter=exporter, data_dir=data_dir)
     import uvicorn
 
     host = str(cfg["host"])
@@ -494,6 +497,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if getattr(args, "demo", False):
         print(f"m5wireless: DEMO (log de ejemplo: {cfg['log_path']})")
     print(f"m5wireless: fuente={cfg['source']} web=http://{host}:{port}")
+    print(
+        "m5wireless: sesion de la UI: token en M5W_UI_TOKEN o en "
+        f"{data_dir / '.ui_token'} (solo localhost)"
+    )
     uvicorn.run(app, host=host, port=port, log_level="info")
     return 0
 
