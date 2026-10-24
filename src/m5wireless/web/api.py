@@ -23,9 +23,18 @@ from pathlib import Path
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
-from ..models import ObservationEvent, normalize_mac
+from ..findings.engine import context_from_store, evaluate_session
+from ..findings.registry import CATALOG_VERSION
+from ..models import (
+    ObservationEvent,
+    Session,
+    normalize_mac,
+)
+from ..report import build_context, verify_evidence, write_evidence, write_report
+from ..report.writer import FORMATS
+from ..session import close_session, get_live_session
 from ..store.base import AbstractStore, ObservationRow
 from ..worker.collector import Collector
 from .schemas import (
@@ -34,6 +43,9 @@ from .schemas import (
     CollectorStats,
     ConsoleResponse,
     ExportCountResponse,
+    FindingListResponse,
+    FindingRead,
+    FindingUpdate,
     FsBrowseResponse,
     FsEntry,
     HealthResponse,
@@ -44,12 +56,19 @@ from .schemas import (
     ImportResponse,
     NetworkDetail,
     NetworkListResponse,
+    ReportResponse,
+    SessionCreate,
+    SessionListResponse,
+    SessionRead,
+    SessionUpdate,
     StatusResponse,
     client_read,
     console_line,
+    finding_read,
     history_row,
     network_detail,
     network_read,
+    session_read,
 )
 from .security import is_within_roots, resolve_browse_roots
 
@@ -662,3 +681,203 @@ def channel_distribution(
     store: AbstractStore = Depends(get_store),
 ) -> ChannelDistributionResponse:
     return ChannelDistributionResponse(channels=store.get_channel_distribution())
+
+
+# ---- sesiones, hallazgos e informe (Fase A, paso 4) ----
+
+
+def get_sessions_root(request: Request) -> Path:
+    """Dependencia: carpeta `data/sessions` usada por la app."""
+    return cast(Path, getattr(request.app.state, "sessions_root", Path("data/sessions")))
+
+
+@router.get("/api/sessions", response_model=SessionListResponse)
+def list_sessions(
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+    estado: str | None = Query(None, description="abierta | cerrada"),
+) -> SessionListResponse:
+    live = get_live_session(store, root=root)
+    return SessionListResponse(
+        sessions=[session_read(s) for s in store.list_sessions(estado=estado)],
+        live=session_read(live),
+    )
+
+
+@router.post("/api/sessions", response_model=SessionRead, status_code=201)
+def create_session_endpoint(
+    payload: SessionCreate,
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+) -> SessionRead:
+    from .. import __version__
+    from ..session import create_session
+
+    session = create_session(
+        store,
+        payload.nombre,
+        root=root,
+        cliente=payload.cliente,
+        operador=payload.operador,
+        lugar=payload.lugar,
+        alcance=payload.alcance,
+        dispositivo=payload.dispositivo,
+        source=payload.source,
+        version_app=__version__,
+    )
+    return session_read(session)
+
+
+def _get_session_or_404(store: AbstractStore, session_id: str) -> Session:
+    session = store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"sesion no encontrada: {session_id}")
+    return session
+
+
+@router.get("/api/sessions/{session_id}", response_model=SessionRead)
+def get_session(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+) -> SessionRead:
+    return session_read(_get_session_or_404(store, session_id))
+
+
+@router.patch("/api/sessions/{session_id}", response_model=SessionRead)
+def update_session(
+    session_id: str,
+    payload: SessionUpdate,
+    store: AbstractStore = Depends(get_store),
+) -> SessionRead:
+    session = _get_session_or_404(store, session_id)
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        return session_read(session)
+    merged = Session(
+        id=session.id,
+        nombre=updates.get("nombre", session.nombre),
+        cliente=updates.get("cliente", session.cliente),
+        operador=updates.get("operador", session.operador),
+        lugar=updates.get("lugar", session.lugar),
+        alcance=updates.get("alcance", session.alcance),
+        dispositivo=updates.get("dispositivo", session.dispositivo),
+        source=session.source,
+        inicio=session.inicio,
+        fin=session.fin,
+        estado=session.estado,
+        version_app=session.version_app,
+        artifacts=session.artifacts,
+    )
+    store.save_session(merged)
+    return session_read(merged)
+
+
+@router.post("/api/sessions/{session_id}/close", response_model=SessionRead)
+def close_session_endpoint(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+) -> SessionRead:
+    """Cerrar la sesion: evalua el catalogo, escribe informe y evidencia."""
+    _get_session_or_404(store, session_id)
+    evaluate_session(store, context_from_store(store, session_id))
+    closed = close_session(store, session_id, root=root)
+    write_report(root / session_id, build_context(store, session_id))
+    return session_read(closed)
+
+
+@router.get("/api/sessions/{session_id}/findings", response_model=FindingListResponse)
+def session_findings(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    severidad: str | None = Query(None),
+    estado: str | None = Query(None),
+) -> FindingListResponse:
+    _get_session_or_404(store, session_id)
+    findings = store.list_findings(session_id=session_id, severidad=severidad, estado=estado)
+    return FindingListResponse(
+        findings=[finding_read(f) for f in findings],
+        total=len(findings),
+        catalog_version=CATALOG_VERSION,
+    )
+
+
+@router.get("/api/findings", response_model=FindingListResponse)
+def all_findings(
+    store: AbstractStore = Depends(get_store),
+    severidad: str | None = Query(None),
+    estado: str | None = Query(None),
+) -> FindingListResponse:
+    findings = store.list_findings(severidad=severidad, estado=estado)
+    return FindingListResponse(
+        findings=[finding_read(f) for f in findings],
+        total=len(findings),
+        catalog_version=CATALOG_VERSION,
+    )
+
+
+@router.patch("/api/findings/{finding_id}", response_model=FindingRead)
+def update_finding(
+    finding_id: str,
+    payload: FindingUpdate,
+    store: AbstractStore = Depends(get_store),
+) -> FindingRead:
+    updated = store.update_finding(finding_id, estado=payload.estado)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"hallazgo no encontrado: {finding_id}")
+    return finding_read(updated)
+
+
+@router.post("/api/sessions/{session_id}/report", response_model=ReportResponse)
+def generate_report(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+    fmt: str = Query("md,html", description="md, html o ambos"),
+) -> ReportResponse:
+    _get_session_or_404(store, session_id)
+    formats = tuple(f.strip().lower() for f in fmt.split(",") if f.strip())
+    for item in formats:
+        if item not in FORMATS:
+            raise HTTPException(status_code=422, detail=f"fmt no valido: {item!r}")
+    ctx = build_context(store, session_id)
+    written = write_report(root / session_id, ctx, formats)
+    return ReportResponse(
+        session_id=session_id,
+        formats=list(formats),
+        written=[str(p) for p in written],
+        integrity=verify_evidence(root / session_id),
+    )
+
+
+@router.get("/api/sessions/{session_id}/report")
+def download_report(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+    fmt: str = Query("md", pattern="^(md|html)$"),
+) -> Response:
+    """Descargar el informe (lo genera si no existe aun)."""
+    _get_session_or_404(store, session_id)
+    path = root / session_id / f"report.{fmt}"
+    if not path.is_file():
+        write_report(root / session_id, build_context(store, session_id), (fmt,))
+    media = "text/markdown" if fmt == "md" else "text/html"
+    return Response(
+        content=path.read_text(encoding="utf-8"),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="report-{session_id}.{fmt}"'},
+    )
+
+
+@router.get("/api/sessions/{session_id}/evidence")
+def session_evidence(
+    session_id: str,
+    store: AbstractStore = Depends(get_store),
+    root: Path = Depends(get_sessions_root),
+) -> dict[str, object]:
+    _get_session_or_404(store, session_id)
+    path = root / session_id / "evidence.json"
+    if not path.is_file():
+        write_evidence(root / session_id, build_context(store, session_id))
+    return cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))

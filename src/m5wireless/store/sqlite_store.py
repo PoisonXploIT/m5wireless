@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections.abc import Iterator
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -165,14 +166,25 @@ class SQLiteStore(AbstractStore):
 
     def __init__(self, path: str | Path) -> None:
         self._path = str(path)
-        self._conn = sqlite3.connect(self._path)
+        # `check_same_thread=False`: FastAPI ejecuta las rutas sincronas en un
+        # threadpool, asi que la conexion creada al construir el store se usa
+        # desde varios hilos. Las escrituras se serializan con `_lock`.
+        self._conn = sqlite3.connect(self._path, check_same_thread=False)
+        self._lock = threading.Lock()
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
+    def _write(self, sql: str, params: tuple[object, ...]) -> sqlite3.Cursor:
+        """Ejecutar y confirmar bajo lock: las rutas FastAPI corren en threadpool."""
+        with self._lock:
+            cursor = self._conn.execute(sql, params)
+            self._conn.commit()
+        return cursor
+
     # ---- escritura ----
     def upsert_network(self, network: Network, *, at: datetime) -> None:
-        self._conn.execute(
+        self._write(
             """
             INSERT INTO networks (bssid, ssid, channel, rssi, first_seen, last_seen)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -191,10 +203,9 @@ class SQLiteStore(AbstractStore):
                 _iso(at),
             ),
         )
-        self._conn.commit()
 
     def upsert_client(self, client: Client, *, at: datetime) -> None:
-        self._conn.execute(
+        self._write(
             """
             INSERT INTO clients (mac, bssid, first_seen, last_seen)
             VALUES (?, ?, ?, ?)
@@ -204,11 +215,10 @@ class SQLiteStore(AbstractStore):
             """,
             (client.mac, client.bssid, _iso(at), _iso(at)),
         )
-        self._conn.commit()
 
     def record_observation(self, event: ObservationEvent) -> None:
         row = event_to_observation_row(event)
-        self._conn.execute(
+        self._write(
             """
             INSERT INTO observations
                 (timestamp, firmware, source, event_type, bssid, rssi, client_mac, raw_line)
@@ -225,7 +235,6 @@ class SQLiteStore(AbstractStore):
                 row.raw_line,
             ),
         )
-        self._conn.commit()
 
     # ---- consulta ----
     def get_network(self, bssid: str) -> Network | None:
@@ -396,7 +405,7 @@ class SQLiteStore(AbstractStore):
 
     # ---- sesiones y hallazgos ----
     def save_session(self, session: Session) -> None:
-        self._conn.execute(
+        self._write(
             """
             INSERT INTO sessions (id, nombre, cliente, operador, lugar, alcance, dispositivo,
                                   source, inicio, fin, estado, version_app, artifacts)
@@ -431,7 +440,6 @@ class SQLiteStore(AbstractStore):
                 json.dumps([asdict(a) for a in session.artifacts], ensure_ascii=False),
             ),
         )
-        self._conn.commit()
 
     def get_session(self, session_id: str) -> Session | None:
         cursor = self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
@@ -448,7 +456,7 @@ class SQLiteStore(AbstractStore):
         return [_row_to_session(r) for r in cursor.fetchall()]
 
     def save_finding(self, finding: Finding) -> None:
-        self._conn.execute(
+        self._write(
             """
             INSERT INTO findings (id, session_id, rule_id, rule_version, severidad, titulo,
                                   activo, evidencia, recomendacion, estado, creado)
@@ -479,7 +487,6 @@ class SQLiteStore(AbstractStore):
                 _iso(finding.creado),
             ),
         )
-        self._conn.commit()
 
     def get_finding(self, finding_id: str) -> Finding | None:
         cursor = self._conn.execute("SELECT * FROM findings WHERE id = ?", (finding_id,))
@@ -511,10 +518,7 @@ class SQLiteStore(AbstractStore):
         return [_row_to_finding(r) for r in cursor.fetchall()]
 
     def update_finding(self, finding_id: str, *, estado: FindingStatus) -> Finding | None:
-        cursor = self._conn.execute(
-            "UPDATE findings SET estado = ? WHERE id = ?", (estado, finding_id)
-        )
-        self._conn.commit()
+        cursor = self._write("UPDATE findings SET estado = ? WHERE id = ?", (estado, finding_id))
         if cursor.rowcount == 0:
             return None
         return self.get_finding(finding_id)
@@ -523,8 +527,7 @@ class SQLiteStore(AbstractStore):
     def prune_older_than(self, days: int, *, reference: datetime | None = None) -> int:
         ref = reference if reference is not None else utc_now()
         cutoff = _iso(ref - timedelta(days=days))
-        cursor = self._conn.execute("DELETE FROM observations WHERE timestamp < ?", (cutoff,))
-        self._conn.commit()
+        cursor = self._write("DELETE FROM observations WHERE timestamp < ?", (cutoff,))
         return cursor.rowcount
 
     def close(self) -> None:

@@ -163,6 +163,7 @@ def create_app(
     app.add_middleware(SecurityHeadersMiddleware)
     app.state.session_token = token
     app.state.browse_roots = resolve_browse_roots(data_dir, browse_roots)
+    app.state.sessions_root = (data_dir or Path("data")) / "sessions"
     app.state.store = store
     app.state.hub = hub
     app.state.collector = collector

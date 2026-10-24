@@ -89,6 +89,7 @@ def test_findings_filters_work(store) -> None:
     assert store.list_findings(session_id="otra") == []
     assert len(store.list_findings(estado="abierto")) == 5
 
+
 def test_context_from_store_counts_observations(store) -> None:
     from datetime import UTC, datetime
 
@@ -97,7 +98,11 @@ def test_context_from_store_counts_observations(store) -> None:
 
     now = datetime(2026, 10, 24, 9, 0, 0, tzinfo=UTC)
     net = Network(bssid="aa:bb:cc:dd:ee:01", ssid="A", channel=6, rssi=-60)
-    store.apply(NetworkSeen(timestamp=now, firmware="marauder", source="file", raw_line="Found A", network=net))
+    store.apply(
+        NetworkSeen(
+            timestamp=now, firmware="marauder", source="file", raw_line="Found A", network=net
+        )
+    )
     store.apply(
         NetworkSeen(
             timestamp=datetime(2026, 10, 24, 9, 5, 0, tzinfo=UTC),
@@ -112,3 +117,24 @@ def test_context_from_store_counts_observations(store) -> None:
     fact = ctx.networks[0]
     assert fact.seen_count == 2
     assert fact.security is None  # el log no aporta seguridad: no se inventa
+
+
+def test_same_active_in_two_sessions_is_not_one_finding(store) -> None:
+    """El id del hallazgo incluye la sesion: dos sesiones con el mismo activo
+    no comparten fila ni triaje."""
+    from dataclasses import replace
+
+    from m5wireless.models import Active, make_finding_id
+
+    ctx = context_from_fixture(FIXTURE)
+    evaluate_session(store, replace(ctx, session_id="sesion-a"))
+    evaluate_session(store, replace(ctx, session_id="sesion-b"))
+
+    ids = {f.id for f in store.list_findings()}
+    assert len(ids) == 10  # 5 hallazgos x 2 sesiones
+    assert make_finding_id(
+        "WIFI-OPEN", Active(bssid="a8:bb:cc:dd:ee:01"), "sesion-a"
+    ) != make_finding_id("WIFI-OPEN", Active(bssid="a8:bb:cc:dd:ee:01"), "sesion-b")
+    assert make_finding_id(
+        "WIFI-OPEN", Active(bssid="a8:bb:cc:dd:ee:01"), "sesion-a"
+    ) == make_finding_id("WIFI-OPEN", Active(bssid="a8:bb:cc:dd:ee:01"), "sesion-a")

@@ -974,8 +974,24 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   completo salen las 10 reglas evaluables). `network_facts` calcula `seen_count`
   del historico de observaciones; el fixture demo ahora declara tantas
   observaciones como `seen_count` para que la demo sea coherente.
-- **Paso 4 (pendiente)**: API `/api/sessions`, `/close`, `/findings`, `/report`,
-  `/evidence` compatible con lo actual.
+- **Paso 4 (COMPLETO, 2026-10-24)**: endpoints nuevos en `web/api.py` —
+  `GET/POST /api/sessions`, `GET/PATCH /api/sessions/{id}`,
+  `POST /api/sessions/{id}/close` (evalua el catalogo, escribe informe y
+  evidencia), `GET /api/sessions/{id}/findings`, `GET /api/findings`,
+  `PATCH /api/findings/{id}`, `POST/GET /api/sessions/{id}/report?fmt=md|html`
+  (descarga con `Content-Disposition`), `GET /api/sessions/{id}/evidence`.
+  `create_app` expone `app.state.sessions_root`. Schemas Pydantic en
+  `web/schemas.py` (`SessionRead/Create/Update`, `FindingRead/Update`,
+  `FindingListResponse`, `ReportResponse`). Los endpoints anteriores no cambian.
+  14 tests nuevos (352 passed, 2 skipped).
+  Dos bugs encontrados al probar contra un servidor real (uvicorn):
+  1. `SQLiteStore` abria la conexion en el hilo principal y FastAPI ejecuta las
+     rutas sincronas en un threadpool → 500 por `check_same_thread`. Arreglado
+     con `check_same_thread=False` + `_write()` serializada con lock.
+  2. `make_finding_id` no incluia la sesion: dos sesiones con el mismo activo
+     compartian id y la segunda no guardaba hallazgos. El id ahora es
+     `rule_id + hash(sesion + activo)`, estable dentro de una sesion.
+- **Paso 5 (pendiente)**: UI de triaje (Sesiones / Hallazgos / Redes / Informe).
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

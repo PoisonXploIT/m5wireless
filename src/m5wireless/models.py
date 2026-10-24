@@ -238,7 +238,15 @@ class Finding:
         _require_aware(self.creado, "creado")
 
 
-def make_finding_id(rule_id: str, activo: Active) -> str:
-    """Id determinista de hallazgo: regla + hash del activo."""
-    digest = hashlib.sha256(activo.key().encode("utf-8")).hexdigest()[:12]
+def make_finding_id(rule_id: str, activo: Active, session_id: str | None = None) -> str:
+    """Id determinista de hallazgo: regla + hash del activo (+ la sesion).
+
+    La sesion entra en el hash para que dos sesiones distintas que observan el
+    mismo activo no compartan fila: el triaje es por sesion. Dentro de una misma
+    sesion el id es estable entre reevaluaciones.
+    """
+    key = activo.key()
+    if session_id:
+        key = f"{session_id}|{key}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
     return f"{rule_id}-{digest}"

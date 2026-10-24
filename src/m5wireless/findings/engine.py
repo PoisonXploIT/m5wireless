@@ -42,7 +42,7 @@ def _to_finding(item: FindingDraft, session_id: str) -> Finding:
         canal=item.activo.get("canal"),
     )
     return Finding(
-        id=make_finding_id(item.rule_id, activo),
+        id=make_finding_id(item.rule_id, activo, session_id),
         session_id=session_id,
         rule_id=item.rule_id,
         rule_version=item.rule_version,
