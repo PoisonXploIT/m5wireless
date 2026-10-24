@@ -104,6 +104,121 @@ def test_console_endpoint_limit_bounds(client: TestClient) -> None:
     assert client.get("/api/console", params={"limit": 0}).status_code == 422
 
 
+# --- U1/U2/U3/U4/U5: responsive, contraste, h1, favicon y foco (m5w 5/7) ---
+
+_CSS = "/static/css/style.css"
+_PAGES = ("/", "/network")
+
+
+def _rule(css: str, selector: str) -> str:
+    """Devuelve el cuerpo de la primera regla exacta de `selector`."""
+    start = css.index(selector + " {")
+    end = css.index("}", start)
+    return css[start:end]
+
+
+def _has_rule(css: str, selector: str, needle: str) -> bool:
+    """True si ALGUNA regla de `selector` contiene `needle` (hay dos `.footer`)."""
+    return any(needle in body for body in css.split(selector + " {")[1:])
+
+
+def _contrast(fg: str, bg: str) -> float:
+    """Ratio WCAG entre dos colores hex (#rrggbb)."""
+
+    def lum(hex_color: str) -> float:
+        channels = [int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    la, lb = lum(fg), lum(bg)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_grid_children_can_shrink(client: TestClient) -> None:
+    """U1: el grid no puede imponer el min-content de la tabla al viewport."""
+    css = client.get(_CSS).text
+    assert "minmax(0, 1fr)" in css
+    assert "min-width: 0" in _rule(css, ".grid > *")
+    assert "min-width: 0" in _rule(css, ".table-wrap")
+    assert "minmax(0, 1fr)" in _rule(css, ".detail")
+    assert "min-width: 0" in _rule(css, ".detail > *")
+
+
+def test_console_timestamps_meet_contrast(client: TestClient) -> None:
+    """U2: el timestamp de consola pasa a --text-dim y supera 4.5:1."""
+    css = client.get(_CSS).text
+    ts = _rule(css, ".console-line .ts")
+    assert "var(--text-dim)" in ts
+    root = _rule(css, ":root")
+    faint = root.split("--text-faint:")[1].split(";")[0].strip()
+    dim = root.split("--text-dim:")[1].split(";")[0].strip()
+    console_bg = css.split(".console {")[1].split("background:")[1].split(";")[0].strip()
+    assert _contrast(dim, console_bg) >= 4.5
+    assert _contrast(faint, "#10151f") >= 4.5  # superficies de panel
+    assert _contrast(faint, console_bg) >= 4.5
+
+
+def test_primary_button_text_meets_contrast(client: TestClient) -> None:
+    """U2: el blanco sobre el boton primario debe alcanzar 4.5:1."""
+    css = client.get(_CSS).text
+    strong = _rule(css, ":root").split("--accent-strong:")[1].split(";")[0].strip()
+    assert _contrast("#ffffff", strong) >= 4.5
+    assert "var(--accent-strong)" in _rule(css, ".btn-primary")
+
+
+def test_network_page_has_h1(client: TestClient) -> None:
+    """U3: /network abre con un h1 visible; el SSID sigue siendo h2."""
+    body = client.get("/network").text
+    assert "<h1 class=\"detail-heading\">Detalle de red</h1>" in body
+    assert body.count("<h1") == 1
+    assert 'id="detail-ssid" class="detail-title"' in body
+
+
+def test_favicon_is_a_real_file_not_a_data_uri(client: TestClient) -> None:
+    """U4: favicon.svg, apple-touch-icon y mask-icon servidos por ruta (CSP-safe)."""
+    svg = client.get("/static/favicon.svg")
+    assert svg.status_code == 200
+    assert "svg" in svg.headers["content-type"]
+    assert "<svg" in svg.text
+
+    png = client.get("/static/apple-touch-icon.png")
+    assert png.status_code == 200
+    assert "image/png" in png.headers["content-type"]
+    assert png.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert png.content[12:16] == b"IHDR"
+    assert len(png.content) > 1000  # 180x180 real, no un placeholder
+
+    mask = client.get("/static/mask-icon.svg")
+    assert mask.status_code == 200
+
+    for path in _PAGES:
+        body = client.get(path).text
+        assert 'rel="icon" href="/static/favicon.svg"' in body
+        assert 'rel="apple-touch-icon" href="/static/apple-touch-icon.png"' in body
+        assert 'rel="mask-icon" href="/static/mask-icon.svg"' in body
+        assert "data:image/svg+xml" not in body  # incompatible con CSP estricta
+
+
+def test_skip_link_and_focus_visible(client: TestClient) -> None:
+    """U5: enlace de salto a la zona de contenido y anillo de foco global."""
+    css = client.get(_CSS).text
+    assert ":focus-visible" in css
+    assert ".skip-link" in css
+    for path in _PAGES:
+        body = client.get(path).text
+        assert 'class="skip-link"' in body
+        target = body.split('class="skip-link" href="#')[1].split('"')[0]
+        assert f'id="{target}"' in body
+
+
+def test_flex_rows_wrap_at_mobile_width(client: TestClient) -> None:
+    """U1: botones de consola y pie no desbordan a 390 px."""
+    css = client.get(_CSS).text
+    assert _has_rule(css, ".panel-actions", "flex-wrap: wrap")
+    assert _has_rule(css, ".footer", "flex-wrap: wrap")
+    assert _has_rule(css, ".panel-head", "flex-wrap: wrap")
+
+
 # Nota: el orden/limit de `get_recent_observations` en SQLiteStore esta cubierto
 # por test_store.py (parametrizado memoria/SQLite); no se repite aqui porque la
 # conexion SQLite no puede cruzar el hilo del portal de TestClient.

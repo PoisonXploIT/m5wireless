@@ -9,13 +9,13 @@
       content="Detalle de red: clientes asociados, historico de observaciones y evolucion de RSSI."
     />
     <title>m5wireless — detalle de red</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e15'/%3E%3Cpath d='M6 19a10 10 0 0 1 20 0' stroke='%2358a6ff' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Cpath d='M10.5 19a5.5 5.5 0 0 1 11 0' stroke='%2358a6ff' stroke-width='2.4' fill='none' stroke-linecap='round' opacity='.6'/%3E%3Ccircle cx='16' cy='21' r='2.2' fill='%233fb950'/%3E%3C/svg%3E"
-    />
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/static/mask-icon.svg" color="#4c8dff" />
     <link rel="stylesheet" href="/static/css/style.css" />
   </head>
   <body>
+    <a class="skip-link" href="#detail-ssid">Saltar al detalle de la red</a>
     <header class="topbar">
       <nav class="breadcrumb" aria-label="Migas de pan">
         <a class="back-link" href="/" title="Volver al dashboard">
@@ -36,6 +36,7 @@
 
     <main class="detail">
       <section class="panel" aria-label="Informacion de la red">
+        <h1 class="detail-heading">Detalle de red</h1>
         <h2 id="detail-ssid" class="detail-title">—</h2>
         <dl class="info-grid">
           <div class="info-item">

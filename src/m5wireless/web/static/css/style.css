@@ -12,9 +12,14 @@
   --border-strong: #2e3a50;
   --text: #e9eef6;
   --text-dim: #8b98ab;
-  --text-faint: #626f83;
+  /* U2: el antiguo #626f83 daba 3.4-3.6:1 sobre las superficies oscuras
+     (axe: color-contrast serious). #8490a0 sube a >= 4.8:1 en todas. */
+  --text-faint: #8490a0;
   --accent: #4c8dff;
   --accent-soft: rgba(76, 141, 255, 0.12);
+  /* U2: #4c8dff con texto blanco da 3.2:1 (axe color-contrast). Esta variante
+     de mismo matiz sube a 4.9:1 y se usa donde hay texto encima. */
+  --accent-strong: #2f6fd0;
   --rssi-good: #34c07c;
   --rssi-mid: #d9a021;
   --rssi-bad: #e5534b;
@@ -61,6 +66,29 @@ body {
 
 ::selection {
   background: var(--accent-soft);
+}
+
+/* ---- skip link (U5 / P1.5): saltar a la tabla con teclado ---- */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  z-index: 20;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-decoration: none;
+  transform: translateY(-140%);
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---- cabecera ---- */
@@ -350,14 +378,22 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, ...) en lugar de 1fr: un hijo con contenido ancho (la tabla) no
+     puede forzar la columna mas alla del viewport; sin el 0, el grid se
+     expande y el documento desborda a 390 px (hallazgo U1). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   padding: 0 20px 16px;
 }
 
+/* cualquier hijo del grid (tabla, consola, canales) debe poder encogerse */
+.grid > * {
+  min-width: 0;
+}
+
 @media (min-width: 768px) {
   .grid {
-    grid-template-columns: 3fr 2fr;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
 
   .console-panel {
@@ -399,6 +435,7 @@ body {
 
 .table-wrap {
   overflow-x: auto;
+  min-width: 0; /* complementa .grid > *: la tabla con nowrap es min-content */
   max-height: 60vh; /* la cabecera queda sticky al hacer scroll */
 }
 
@@ -610,6 +647,7 @@ td.time {
 
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -622,7 +660,9 @@ td.time {
 
 .panel-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .btn-sm {
@@ -670,7 +710,9 @@ td.time {
 }
 
 .console-line .ts {
-  color: var(--text-faint);
+  /* U2: --text-faint (#626f83) sobre el fondo de consola (#05070c) da 3.6:1,
+     por debajo del 4.5:1 de WCAG. --text-dim (#8b98ab) sube a ~6.9:1. */
+  color: var(--text-dim);
   flex: none;
   font-variant-numeric: tabular-nums;
 }
@@ -719,7 +761,7 @@ td.time {
 
 .channels li {
   display: grid;
-  grid-template-columns: 56px 1fr 34px;
+  grid-template-columns: 56px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 10px;
   font-size: 0.8rem;
@@ -769,6 +811,7 @@ td.time {
 
 .footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 4px 20px 28px;
@@ -815,14 +858,14 @@ td.time {
 
 /* accion principal de la zona (un solo primary por vista) */
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
   color: #fff;
 }
 
 .btn-primary:hover {
-  background: #3d7df2;
-  border-color: #3d7df2;
+  background: #2458a8;
+  border-color: var(--accent);
 }
 
 .btn-primary svg {
@@ -879,13 +922,18 @@ td.time {
 
 .detail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   padding: 1rem;
 }
 
+.detail > * {
+  min-width: 0;
+}
+
 @media (min-width: 768px) {
   .detail {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
   }
 
@@ -893,6 +941,13 @@ td.time {
   .detail .panel:last-child {
     grid-column: 1 / -1;
   }
+}
+
+.detail-heading {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 
 .detail-title {
