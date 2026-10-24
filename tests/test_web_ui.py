@@ -71,6 +71,31 @@ def test_console_endpoint_returns_recent_raw_lines(client: TestClient) -> None:
     assert all(line["timestamp"] and line["event_type"] for line in lines)
 
 
+# --- S5: XSS en los chips de filtro (m5w 4/7) ---
+
+_JS_STATIC = ("/static/js/dashboard.js", "/static/js/network.js")
+
+
+def test_filter_chips_build_text_with_text_content(client: TestClient) -> None:
+    """renderChips ya no usa innerHTML: el texto del usuario se pinta literal."""
+    js = client.get("/static/js/dashboard.js").text
+    start = js.index("function renderChips()")
+    end = js.index("chipsEl.appendChild(chip)", start) + len("chipsEl.appendChild(chip)")
+    body = js[start:end]
+    assert "innerHTML" not in body
+    assert 'createElement("b")' in body  # el negrita se crea por DOM, no por cadena
+    assert body.count("textContent") >= 2
+
+
+def test_static_js_has_no_inner_html_with_interpolation(client: TestClient) -> None:
+    """Los innerHTML que quedan son literales estaticos (iconos SVG), sin datos del usuario."""
+    for path in _JS_STATIC:
+        js = client.get(path).text
+        for line_no, line in enumerate(js.splitlines(), start=1):
+            if "innerHTML" in line and "${" in line:
+                pytest.fail(f"{path}:{line_no} innerHTML con interpolacion: {line.strip()}")
+
+
 def test_console_endpoint_limit_bounds(client: TestClient) -> None:
     # Limit mayor que el total devuelve todo el historico (6 en la semilla).
     res = client.get("/api/console", params={"limit": 100})

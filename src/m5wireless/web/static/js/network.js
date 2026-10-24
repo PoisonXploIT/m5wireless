@@ -268,7 +268,7 @@
       crosshair.setAttribute("x2", best.px);
       crosshair.setAttribute("visibility", "visible");
       tooltip.hidden = false;
-      tooltip.innerHTML = "";
+      tooltip.textContent = "";
       const t1 = document.createElement("div");
       t1.className = "tt-strong";
       t1.textContent = `${best.rssi} dBm`;

@@ -689,7 +689,10 @@
     }
     const bits = [];
     if (data.port) bits.push(`${data.port} @ ${data.baudrate ?? 115200}`);
-    if (data.path) bits.push(data.path);
+    // `display` es la etiqueta corta (p. ej. "file:demo_scan.log"); `path` ya viene
+    // como nombre suelto. Nunca se imprime la ruta absoluta del operador.
+    if (data.display) bits.push(data.display);
+    else if (data.path) bits.push(data.path);
     if (data.firmware) bits.push(data.firmware);
     bits.push(data.state);
     const ok = data.state === "conectado" || data.state === "reproduciendo";
@@ -796,23 +799,30 @@
   }
 
   // Chips de filtros activos, con boton de dismiss por filtro.
+  // Seguridad (S5): el texto del usuario se mete SIEMPRE por textContent y el <b> se
+  // crea por DOM. Un filtro como <img src=x onerror=alert(1)> se pinta literal.
   function renderChips() {
     chipsEl.textContent = "";
     const active = [];
     const text = filterText.value.trim();
-    if (text) active.push({ key: "text", label: `texto: <b>${text}</b>` });
+    if (text) active.push({ key: "text", prefix: "texto: ", value: text });
     if (filterChannel.value) {
-      active.push({ key: "channel", label: `canal: <b>${filterChannel.value}</b>` });
+      active.push({ key: "channel", prefix: "canal: ", value: filterChannel.value });
     }
     if (filterRssi.value.trim()) {
-      active.push({ key: "rssi", label: `RSSI ≥ <b>${filterRssi.value.trim()} dBm</b>` });
+      active.push({ key: "rssi", prefix: "RSSI ≥ ", value: `${filterRssi.value.trim()} dBm` });
     }
-    if (filterClients.checked) active.push({ key: "clients", label: "solo con clientes" });
-    for (const { key, label } of active) {
+    if (filterClients.checked) active.push({ key: "clients", prefix: "solo con clientes", value: "" });
+    for (const { key, prefix, value } of active) {
       const chip = document.createElement("span");
       chip.className = "chip";
       const txt = document.createElement("span");
-      txt.innerHTML = label;
+      txt.textContent = prefix;
+      if (value) {
+        const b = document.createElement("b");
+        b.textContent = value;
+        txt.appendChild(b);
+      }
       const btn = document.createElement("button");
       btn.type = "button";
       btn.title = "Quitar filtro";
