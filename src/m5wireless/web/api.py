@@ -230,8 +230,7 @@ def browse_fs(request: Request, path: str | None = Query(None)) -> FsBrowseRespo
             path=None,
             parent=None,
             entries=[
-                FsEntry(name=root.name or str(root), path=str(root), kind="dir")
-                for root in roots
+                FsEntry(name=root.name or str(root), path=str(root), kind="dir") for root in roots
             ],
         )
     root = _resolve_within_roots(path, roots)
@@ -328,7 +327,9 @@ def _run_import(
             else:
                 summary.errors += 1
                 summary.messages.append(f"{path.name}: {error}")
-            result = ImportFileResult(name=path.name, ok=error is None, events=len(events), error=error)
+            result = ImportFileResult(
+                name=path.name, ok=error is None, events=len(events), error=error
+            )
             results.append(result)
             yield {
                 "type": "file",

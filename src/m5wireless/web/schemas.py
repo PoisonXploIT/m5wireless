@@ -182,7 +182,7 @@ class SplunkTestResponse(BaseModel):
 
 class SplunkSendRequest(BaseModel):
     format: str = "json"  # "json" | "csv"
-    scope: str = "all"   # "all" | "filtered"
+    scope: str = "all"  # "all" | "filtered"
     since: datetime | None = None
     until: datetime | None = None
     ssid: str | None = None

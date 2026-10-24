@@ -307,7 +307,7 @@ def test_export_is_a_dialog_not_two_links(client: TestClient) -> None:
     assert 'aria-labelledby="export-title"' in body
     assert 'data-format="csv"' in body and 'data-format="json"' in body
     assert 'data-scope="filtered"' in body and 'data-scope="all"' in body
-    assert 'aria-pressed=' in body
+    assert "aria-pressed=" in body
     assert 'id="export-count"' in body
     assert 'id="export-splunk-test"' in body
     assert 'id="export-splunk-send"' in body

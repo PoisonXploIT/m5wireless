@@ -43,7 +43,7 @@ def _line_timestamp(raw_ts: str, received_at: datetime) -> datetime:
     """Interpreta el timestamp de la linea; fallback a `received_at`."""
     for fmt in _TS_FORMATS:
         try:
-            parsed = datetime.strptime(raw_ts.strip(), fmt)  # noqa: DTZ007
+            parsed = datetime.strptime(raw_ts.strip(), fmt)
         except ValueError:
             continue
         if fmt == "%H:%M:%S":

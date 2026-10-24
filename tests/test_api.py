@@ -75,7 +75,9 @@ def test_status_with_file_collector(seeded_store: MemoryStore, marauder_log_path
     assert "\\" not in json.dumps(body) and "C:\\" not in json.dumps(body)
 
 
-def test_status_no_filtra_la_ruta_absoluta_del_log(seeded_store: MemoryStore, tmp_path: Path) -> None:
+def test_status_no_filtra_la_ruta_absoluta_del_log(
+    seeded_store: MemoryStore, tmp_path: Path
+) -> None:
     """Aunque el operador pase una ruta absoluta, la respuesta va sin ruta.
 
     Es el caso de la demo: `--source file --log-path data/demo_scan.log`.
