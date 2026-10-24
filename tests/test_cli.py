@@ -253,3 +253,69 @@ def test_bruce_info_against_local_server(
         thread.join(timeout=5)
     assert rc == 0
     assert "BRUCE_VERSION" in capsys.readouterr().out
+
+
+def test_demo_cli_creates_session_with_five_findings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Paso 6: `m5wireless demo` deja una sesion cerrada con 5 hallazgos e informe."""
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    rc = cli.main(["demo", "--db", str(db), "--root", str(root)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "hallazgos: 5" in out
+    session_id = next(
+        line.split(":", 1)[1].strip() for line in out.splitlines() if line.startswith("sesion:")
+    )
+    directory = root / session_id
+    assert (directory / "report.md").is_file()
+    assert (directory / "report.html").is_file()
+    assert (directory / "findings.csv").is_file()
+    csv_text = (directory / "findings.csv").read_text(encoding="utf-8")
+    assert csv_text.count("\n") == 6  # cabecera + 5 hallazgos
+
+
+def test_close_cli_writes_csv_and_reports_integrity(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    cli.main(["demo", "--db", str(db), "--root", str(root)])
+    capsys.readouterr()
+    session_id = next(
+        (root / name).name for name in sorted(p.name for p in root.iterdir() if p.is_dir())
+    )
+    rc = cli.main(
+        [
+            "close",
+            "--session",
+            session_id,
+            "--db",
+            str(db),
+            "--root",
+            str(root),
+            "--csv",
+            str(tmp_path / "hallazgos.csv"),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "integridad: verificada" in out
+    assert (tmp_path / "hallazgos.csv").is_file()
+
+
+def test_findings_cli_export(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db = tmp_path / "demo.db"
+    root = tmp_path / "sessions"
+    cli.main(["demo", "--db", str(db), "--root", str(root)])
+    capsys.readouterr()
+    session_id = next(
+        (root / name).name for name in sorted(p.name for p in root.iterdir() if p.is_dir())
+    )
+    rc = cli.main(
+        ["findings", "--session", session_id, "--output", str(tmp_path / "f.csv"), "--db", str(db)]
+    )
+    assert rc == 0
+    assert "hallazgos ->" in capsys.readouterr().out
+    assert (tmp_path / "f.csv").is_file()

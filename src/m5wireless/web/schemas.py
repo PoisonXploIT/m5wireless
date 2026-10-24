@@ -15,9 +15,13 @@ from pydantic import BaseModel
 from ..models import (
     Client,
     ClientAssociated,
+    Finding,
+    FindingStatus,
     Network,
     NetworkSeen,
     ObservationEvent,
+    Session,
+    SessionSource,
     StatusEvent,
 )
 from ..store.base import ObservationRow
@@ -104,6 +108,130 @@ class StatusResponse(BaseModel):
 
 class ChannelDistributionResponse(BaseModel):
     channels: dict[int, int]
+
+
+# ---- sesiones y hallazgos (Fase A, paso 4) ----
+
+
+class ArtifactRead(BaseModel):
+    nombre: str
+    ruta: str
+    sha256: str
+    bytes: int
+
+
+class SessionRead(BaseModel):
+    id: str
+    nombre: str
+    cliente: str
+    operador: str
+    lugar: str
+    alcance: str
+    dispositivo: str
+    source: str
+    inicio: datetime
+    fin: datetime | None
+    estado: str
+    version_app: str
+    artifacts: list[ArtifactRead]
+
+
+class SessionCreate(BaseModel):
+    """Alta de una sesion. `nombre` es obligatorio; el resto, opcional."""
+
+    nombre: str
+    cliente: str = ""
+    operador: str = ""
+    lugar: str = ""
+    alcance: str = ""
+    dispositivo: str = ""
+    source: SessionSource = "file"
+
+
+class SessionUpdate(BaseModel):
+    """Edicion de metadatos: solo los campos enviados se cambian."""
+
+    nombre: str | None = None
+    cliente: str | None = None
+    operador: str | None = None
+    lugar: str | None = None
+    alcance: str | None = None
+    dispositivo: str | None = None
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionRead]
+    live: SessionRead | None = None
+
+
+class FindingRead(BaseModel):
+    id: str
+    session_id: str
+    rule_id: str
+    rule_version: int
+    severidad: str
+    titulo: str
+    activo: dict[str, str]
+    evidencia: dict[str, object]
+    recomendacion: str
+    estado: str
+    creado: datetime
+
+
+class FindingUpdate(BaseModel):
+    estado: FindingStatus
+
+
+class FindingListResponse(BaseModel):
+    findings: list[FindingRead]
+    total: int
+    catalog_version: int
+
+
+class ReportResponse(BaseModel):
+    session_id: str
+    formats: list[str]
+    written: list[str]
+    integrity: dict[str, object]
+
+
+def session_read(session: Session) -> SessionRead:
+    return SessionRead(
+        id=session.id,
+        nombre=session.nombre,
+        cliente=session.cliente,
+        operador=session.operador,
+        lugar=session.lugar,
+        alcance=session.alcance,
+        dispositivo=session.dispositivo,
+        source=session.source,
+        inicio=session.inicio,
+        fin=session.fin,
+        estado=session.estado,
+        version_app=session.version_app,
+        artifacts=[
+            ArtifactRead(nombre=a.nombre, ruta=a.ruta, sha256=a.sha256, bytes=a.bytes)
+            for a in session.artifacts
+        ],
+    )
+
+
+def finding_read(finding: Finding) -> FindingRead:
+    from dataclasses import asdict
+
+    return FindingRead(
+        id=finding.id,
+        session_id=finding.session_id,
+        rule_id=finding.rule_id,
+        rule_version=finding.rule_version,
+        severidad=finding.severidad,
+        titulo=finding.titulo,
+        activo={k: v for k, v in asdict(finding.activo).items() if v is not None},
+        evidencia=dict(finding.evidencia),
+        recomendacion=finding.recomendacion,
+        estado=finding.estado,
+        creado=finding.creado,
+    )
 
 
 # ---- importador de capturas (pcaps grabados / SD montada) ----

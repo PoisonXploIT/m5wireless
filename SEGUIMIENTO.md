@@ -4,9 +4,12 @@ Documento de seguimiento para vaciar contexto sin perder el hilo. Cada fase/camb
 lleva su **mini prompt**: bloques copy-paste para situar a un agente en sesión nueva
 tras overflow de contexto, sin necesidad de compactar.
 
-Última actualización: 2026-10-24 — plan de mejora P0/P1/P2 ejecutado en 7 tareas
-(seguridad web, responsive, consola, importador y export); 269 tests, ruff +
-mypy --strict limpios. Última release publicada: v3.4.0 (sin cambios de version).
+Última actualización: 2026-10-24 — fase A (consola de evaluación: sesiones,
+hallazgos, informes, evidencia, API, UI, integraciones) cerrada en la rama
+`feat/wifi-assessment` con 385 tests, ruff + mypy --strict limpios y version
+`3.5.0` preparada (tag/release pendiente del OK del usuario). `main` intacta.
+Última release publicada: v3.4.0. Plan y decisiones en el vault
+`40-IA\PROYECTOS\m5wireless\` (indice `000_m5wireless.md`).
 Roadmap actual: seccion 'Continuar' — unificacion de fuentes; quedan los
 items 2 (Marauder WebUI) y 3 (IQ HackRF), ambos gated por
 hardware/muestra real.
@@ -424,6 +427,38 @@ Trabajo no gated: roadmap de unificacion (items 2 y 3 siguen gated por hardware)
 - Home del blog (`content/index.md`): enlace directo a `github.com/PoisonXploIT/m5wireless`.
 - La carpeta local sigue siendo `C:\Users\Sammi\m5stick-wireless-viewer` (no renombrada;
   el remote ya apunta al nuevo nombre).
+
+### v3.5.0 — consola de evaluacion WiFi (fase A; pendiente de tag/release)
+
+Cambios:
+- **Sesiones**: `Session`/`SessionStatus` en el store (SQLite + memoria),
+  `create_session`/`close_session`/`get_live_session`, carpetas
+  `data/sessions/<id>/` con `session.json`, `findings.json`, `report.md`,
+  `report.html`, `evidence.json`, `hashes.json` y `artifacts/`.
+- **Catalogo de reglas (v1)**: 10 reglas puras (`WIFI-OPEN`, `WIFI-WEP`,
+  `WIFI-WPS`, `WIFI-HIDDEN`, `WIFI-EVILTWIN`, `WIFI-CLIENT-OPEN`,
+  `WIFI-OUI-INFRA`, `WIFI-CHANNEL-CONGESTION`, `WIFI-TRANSIENT`,
+  `WIFI-CONFIG-DRIFT`) con deduplicacion determinista por
+  `(rule_id, sesion, activo)` y caso negativo en cada fixture.
+- **Informes**: Markdown y HTML autocontenido (sin CDN ni JS, HTML escapado),
+  orden por severidad, evidencia con SHA-256 y `verify_evidence()`.
+- **API**: sesiones, hallazgos, triaje, informe y evidencia
+  (`/api/sessions*`, `/api/findings*`, `/api/sessions/{id}/report`,
+  `/api/sessions/{id}/evidence`, `/api/sessions/{id}/findings.csv`).
+- **UI**: `/evaluacion` con alta de sesion, cierre con evaluacion, contadores,
+  triaje (abierto/aceptado/falso positivo/corregido), descarga del informe y
+  tabla de hashes. axe-core: 0 violaciones; sin desbordamiento a 390 px.
+- **Integraciones**: webhooks `session.closed` (Discord y generic, allowlist,
+  `http` solo loopback), CSV de hallazgos y demo Docker
+  (`docker compose up` → sesion cerrada con 5 hallazgos).
+- **CLI**: `close`, `findings`, `demo [--serve]` y `report` con verificacion de
+  integridad.
+- Bugs corregidos: `SQLiteStore` thread-safe para el threadpool de FastAPI;
+  `make_finding_id` incluye la sesion; el activo de `WIFI-EVILTWIN` se clavea
+  por SSID + BSSID minimo para que la misma pareja de APs no genere dos
+  hallazgos segun el contexto.
+- Tests: 385 passed, 2 skipped (33 nuevos sobre sesiones, reglas, informes,
+  API, UI, webhooks, CSV y e2e).
 
 ### v3.4.0 — importador de capturas desde el dashboard (publicada en PyPI)
 
@@ -906,6 +941,127 @@ siguiente sin cerrar el anterior (tests + smoke del alcance del hito).
   (seccion 'Rediseño visual del dashboard' mas arriba).
 
 ---
+
+## Fase A — consola de evaluacion (sesiones, hallazgos, informes)
+
+Plan completo en el vault: `40-IA\PROYECTOS\m5wireless\PLAN-EJECUCION-2026-10-24.md`.
+Rama de trabajo: `feat/wifi-assessment` (no se toca `main` hasta cerrar el MVP).
+En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
+
+- **Paso 0 (COMPLETO, 2026-10-24)**: rama, `.gitignore` (`data/sessions/`,
+  `reports/`, `*.pdf`), esqueleto de `docs/` (`instalacion.md`, `uso.md`,
+  `reglas.md` con el catalogo de 10 reglas) y fixture versionado
+  `tests/fixtures/assessment/` (`redes.json` + `sesion_demo.json`): red abierta
+  que es gemelo malicioso de una WPA2, una WEP, un cliente en la abierta y una
+  red transitoria. 8 tests nuevos de coherencia del fixture (277 passed, 2
+  skipped); ruff y mypy --strict sobre `src/m5wireless` limpios.
+  Caso negativo cubierto en el fixture: sin WPS, sin SSID oculto, sin congestion
+  de canal (max 2 redes por canal).
+  Nota de gating: `WIFI-WPS` queda aplazada porque ningun parser actual entrega
+  el flag WPS (regla: no escribir reglas sobre datos que el pipeline no produce).
+- **Paso 1 (COMPLETO, 2026-10-24)**: `models.py` con `Session`, `Finding`,
+  `Active`, `Artifact` y validadores (severidad, estado, datetime aware);
+  `make_session_id` (slug `YYYYMMDD-nombre`) y `make_finding_id`
+  (`rule_id + hash(activo)`, estable entre ejecuciones). `store/base.py`,
+  `memory_store.py` y `sqlite_store.py` con tablas `sessions` y `findings`
+  (CREATE IF NOT EXISTS: migracion automatica sobre una DB antigua) e indices
+  por sesion/severidad/estado. `src/m5wireless/session.py`: `create_session`,
+  `close_session`, `get_live_session` (sesion viva implicita
+  `<fecha>-viva`, compatibilidad con el flujo actual), escritura atomica
+  (tmp + `os.replace`) de `session.json`, `findings.json` y `hashes.json` en
+  `data/sessions/<id>/` con SHA-256 de `artifacts/`. Semantica clave:
+  `save_finding` actualiza evidencia pero **no** pisa el triaje ya decidido.
+  17 tests nuevos en `tests/test_sessions.py` (294 passed, 2 skipped); ruff y
+  mypy --strict sobre `src/m5wireless` limpios. Demo verificada a mano:
+  `data/sessions/20261024-demo/` con `session.json`, `findings.json`,
+  `hashes.json` y `artifacts/` tras cerrar la sesion del fixture.
+- **Paso 2 (COMPLETO, 2026-10-24)**: `src/m5wireless/findings/` con `base.py`
+  (`RuleContext`, `NetworkFact`, `ClientFact`, `FindingDraft`, `Rule`),
+  `registry.py` (`RULES` ordenadas, `CATALOG_VERSION = 1`) y `engine.py`
+  (`evaluate_session`, `context_from_store`, `context_from_fixture`). Una regla
+  por fichero en `findings/rules/`: open, wep, wps, hidden, evil_twin,
+  client_open, oui_infra, channel_congestion, transient, config_drift. Todas
+  puras: sin red, sin disco, sin store.
+  Deduplicacion por `(rule_id, activo)` con id determinista; reevaluar no crea
+  duplicados ni borra el triaje. `Active` gana el campo `canal` (la regla de
+  congestion se identifica por canal, no por BSSID).
+  OUI-INFRA usa el bit 'locally assigned' del primer octeto (norma IEEE), no una
+  lista de marcas: no se afirman fabricantes que no podemos comprobar.
+  Aceptacion verificada: el fixture demo da **exactamente 5 hallazgos**
+  (OPEN, WEP, EVILTWIN, CLIENT-OPEN, TRANSIENT), 0 duplicados, y cada regla tiene
+  su caso negativo. 29 tests nuevos en `tests/test_findings_*.py` (323 passed,
+  2 skipped); ruff y mypy --strict limpios.
+- **Paso 3 (COMPLETO, 2026-10-24)**: `src/m5wireless/report/` con `context.py`
+  (`ReportContext`, orden determinista por severidad), `markdown.py`, `html.py`
+  (CSS embebido, sin CDN, sin JS, sin fuentes externas) y `evidence.py`
+  (`build_evidence`, `write_evidence`, `verify_evidence`: recalcula SHA-256 y
+  compara con `hashes.json`, detecta artefactos alterados, faltantes o sin hash).
+  `writer.py` deja `report.md`, `report.html` y `evidence.json` en la carpeta de
+  la sesion. Nueva subcomando CLI: `m5wireless report --session <id> --fmt md,html
+  [--db ...] [--root ...]`; devuelve 0 si la integridad esta verificada, 1 si hay
+  que revisarla. Escapado: SSID `<img onerror=alert(1)>` sale como texto en HTML
+  (`&lt;img...`) y como entidad en Markdown. 11 tests nuevos (334 passed, 2 skipped).
+  Limitacion anotada: una sesion alimentada solo con logs de firmware no aporta
+  campo de seguridad, asi que OPEN/WEP/CLIENT-OPEN no disparan (con el fixture
+  completo salen las 10 reglas evaluables). `network_facts` calcula `seen_count`
+  del historico de observaciones; el fixture demo ahora declara tantas
+  observaciones como `seen_count` para que la demo sea coherente.
+- **Paso 4 (COMPLETO, 2026-10-24)**: endpoints nuevos en `web/api.py` —
+  `GET/POST /api/sessions`, `GET/PATCH /api/sessions/{id}`,
+  `POST /api/sessions/{id}/close` (evalua el catalogo, escribe informe y
+  evidencia), `GET /api/sessions/{id}/findings`, `GET /api/findings`,
+  `PATCH /api/findings/{id}`, `POST/GET /api/sessions/{id}/report?fmt=md|html`
+  (descarga con `Content-Disposition`), `GET /api/sessions/{id}/evidence`.
+  `create_app` expone `app.state.sessions_root`. Schemas Pydantic en
+  `web/schemas.py` (`SessionRead/Create/Update`, `FindingRead/Update`,
+  `FindingListResponse`, `ReportResponse`). Los endpoints anteriores no cambian.
+  14 tests nuevos (352 passed, 2 skipped).
+  Dos bugs encontrados al probar contra un servidor real (uvicorn):
+  1. `SQLiteStore` abria la conexion en el hilo principal y FastAPI ejecuta las
+     rutas sincronas en un threadpool → 500 por `check_same_thread`. Arreglado
+     con `check_same_thread=False` + `_write()` serializada con lock.
+  2. `make_finding_id` no incluia la sesion: dos sesiones con el mismo activo
+     compartian id y la segunda no guardaba hallazgos. El id ahora es
+     `rule_id + hash(sesion + activo)`, estable dentro de una sesion.
+- **Paso 5 (COMPLETO, 2026-10-24)**: consola de evaluacion en `/evaluacion`
+  (`templates/assessment.html` + `static/js/assessment.js`): selector de sesion,
+  alta de sesion (nombre, cliente, operador, lugar, alcance, fuente), cierre con
+  evaluacion del catalogo, contadores por severidad y sin triar, lista de
+  hallazgos con evidencia y recomendacion, botones de triaje
+  (abierto/aceptado/falso positivo/corregido), generacion y descarga del informe
+  y tabla de hashes con estado de integridad. Navegacion `Redes / Evaluacion` en
+  ambas paginas. En `/`, contadores, pipeline y canales pasan a un
+  `<details class="panel tech-panel">` plegado por defecto.
+  Cambios de soporte: `/evaluacion` entra en `PAGE_PATHS` y en `_NO_CACHE_PATHS`;
+  `write_report` registra `report.md`/`report.html` en `hashes.json` (el hash se
+  actualiza al regenerar) y `/api/sessions/{id}/evidence` devuelve `hashes` +
+  `integrity`.
+  Verificacion real con Chrome headless + axe-core (`scripts/axe_check.js`):
+  **0 violaciones** en `/evaluacion` (con 5 hallazgos renderizados) y en `/`.
+  `scripts/responsive_check.js` a 390 px: `scrollWidth` 390, 0 elementos
+  desbordados fuera de contenedores con scroll. 10 tests nuevos
+  (`tests/test_web_assessment.py`) y 363 passed en total.
+- **Paso 6 (COMPLETO, 2026-10-24)**: integraciones y demo.
+  - `src/m5wireless/exporter/webhook.py`: `session.closed` con allowlist
+    (`http` solo loopback, `https` con `M5W_WEBHOOK_ALLOWED_HOSTS`), payloads
+    `generic` y `discord` (embed por hallazgo, orden por severidad, limites de
+    Discord), reintentos y tolerancia a fallos. La URL sale de `--webhook`,
+    `M5W_WEBHOOK_URL` o `M5W_DISCORD_WEBHOOK`; la clave de Discord esta solo en
+    la variable de entorno del usuario, no en el repo.
+  - CSV de hallazgos: `report/findings_csv.py`, CLI `m5wireless findings
+    --session --output` y `close --csv`, endpoint
+    `GET /api/sessions/{id}/findings.csv`.
+  - Demo reproducible: `m5wireless demo [--serve]` con fixture sintetic
+    empaquetado en `src/m5wireless/data/assessment_demo.json` (5 hallazgos,
+    informe MD/HTML y `findings.csv`). `Dockerfile` + `docker-compose.yml` +
+    `.dockerignore` levantan la demo en `http://localhost:8000`.
+  - Correccion: el webhook informa de TODOS los hallazgos de la sesion, no solo
+    de los creados en esa evaluacion (una reevaluacion no duplica hallazgos).
+  - 14 tests nuevos en `tests/test_webhook.py`, 2 en `tests/test_sessions_api.py`
+    (CSV y cierre con webhook contra un servidor loopback real) y 3 en
+    `tests/test_cli.py` (demo, close, export). Total: 382 passed, 2 skipped.
+  - `docs/integraciones.md` redactado. Docker no esta instalado en esta maquina,
+    la demo se verifico con `m5wireless demo` local.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

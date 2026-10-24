@@ -81,7 +81,7 @@ SECURITY_HEADERS: tuple[tuple[str, bytes], ...] = (
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # Rutas que emiten la cookie de sesion (el navegador entra por aqui).
-PAGE_PATHS = frozenset({"/", "/network"})
+PAGE_PATHS = frozenset({"/", "/network", "/evaluacion"})
 # Cualquier `/api` o `/api/...` necesita sesion (incluido /api/events, el SSE).
 API_PREFIX = "/api"
 
