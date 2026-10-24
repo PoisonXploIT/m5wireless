@@ -11,12 +11,26 @@ Notas de diseño:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 SourceType = Literal["serial", "file", "sdcard"]
+
+# Fuente de una sesion de evaluacion. Es mas amplia que `SourceType` (la de los
+# eventos), porque una sesion puede abrirse desde Bruce o su WebUI sin que
+# exista un parser por linea para ello.
+SessionSource = Literal["serial", "file", "sdcard", "bruce", "bruce-web"]
+SessionStatus = Literal["abierta", "cerrada"]
+Severity = Literal["critica", "alta", "media", "baja", "info"]
+FindingStatus = Literal["abierto", "aceptado", "falso_positivo", "corregido"]
+
+SEVERITIES: tuple[str, ...] = ("critica", "alta", "media", "baja", "info")
+FINDING_STATUSES: tuple[str, ...] = ("abierto", "aceptado", "falso_positivo", "corregido")
+SESSION_STATUSES: tuple[str, ...] = ("abierta", "cerrada")
+SESSION_SOURCES: tuple[str, ...] = ("serial", "file", "sdcard", "bruce", "bruce-web")
 
 
 def utc_now() -> datetime:
@@ -109,3 +123,121 @@ class StatusEvent(Observation):
 
 # Union discriminada: cada evento sabe que tipo de dato transporta.
 ObservationEvent = NetworkSeen | ClientAssociated | StatusEvent
+
+
+# ---------------------------------------------------------------------------
+# Fase A: sesiones y hallazgos (contrato de datos del plan 2026-10-24)
+# ---------------------------------------------------------------------------
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _require_aware(dt: datetime, field_name: str) -> None:
+    if dt.tzinfo is None:
+        raise ValueError(f"{field_name} debe ser un datetime aware (UTC): {dt!r}")
+
+
+def make_session_id(nombre: str, inicio: datetime) -> str:
+    """Slug de sesion: `YYYYMMDD-lugar` a partir del nombre y la fecha.
+
+    'Auditoria WiFi oficina B' + 2026-10-24 -> '20261024-auditoria-wifi-oficina-b'
+    """
+    slug = _SLUG_RE.sub("-", nombre.strip().lower()).strip("-") or "sesion"
+    return f"{inicio:%Y%m%d}-{slug}"
+
+
+@dataclass(slots=True, frozen=True)
+class Artifact:
+    """Fichero de evidencia de una sesion, con su hash SHA-256."""
+
+    nombre: str
+    ruta: str  # ruta relativa a la carpeta de la sesion
+    sha256: str
+    bytes: int
+
+
+@dataclass(slots=True, frozen=True)
+class Session:
+    """Un run de evaluacion: quien, donde, que alcance legal y que evidencia."""
+
+    id: str
+    nombre: str
+    cliente: str = ""
+    operador: str = ""
+    lugar: str = ""
+    alcance: str = ""
+    dispositivo: str = ""
+    source: SessionSource = "file"
+    inicio: datetime = field(default_factory=utc_now)
+    fin: datetime | None = None
+    estado: SessionStatus = "abierta"
+    version_app: str = ""
+    artifacts: tuple[Artifact, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            raise ValueError("la sesion necesita un id")
+        if self.estado not in SESSION_STATUSES:
+            raise ValueError(f"estado de sesion invalido: {self.estado!r}")
+        if self.source not in SESSION_SOURCES:
+            raise ValueError(f"source invalido: {self.source!r}")
+        _require_aware(self.inicio, "inicio")
+        if self.fin is not None:
+            _require_aware(self.fin, "fin")
+            if self.fin < self.inicio:
+                raise ValueError("fin no puede ser anterior a inicio")
+        if self.estado == "cerrada" and self.fin is None:
+            raise ValueError("una sesion cerrada necesita fecha de cierre (fin)")
+
+
+@dataclass(slots=True, frozen=True)
+class Active:
+    """El 'activo' de un hallazgo: a quien apunta (los campos que apliquen).
+
+    Es la clave de deduplicacion: dos hallazgos de la misma regla sobre el mismo
+    activo son el mismo hallazgo, aunque cambie la evidencia.
+    """
+
+    bssid: str | None = None
+    ssid: str | None = None
+    client_mac: str | None = None
+
+    def key(self) -> str:
+        parts = [v for v in (self.bssid, self.ssid, self.client_mac) if v is not None]
+        return "|".join(parts)
+
+
+@dataclass(slots=True, frozen=True)
+class Finding:
+    """Hallazgo evaluable, estable entre ejecuciones.
+
+    `id` = rule_id + hash del activo, lo que permite re-evaluar una sesion sin
+    duplicar hallazgos ni perder el triaje ya decidido.
+    """
+
+    id: str
+    session_id: str
+    rule_id: str
+    rule_version: int
+    severidad: Severity
+    titulo: str
+    activo: Active
+    evidencia: dict[str, Any] = field(default_factory=dict)
+    recomendacion: str = ""
+    estado: FindingStatus = "abierto"
+    creado: datetime = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if self.severidad not in SEVERITIES:
+            raise ValueError(f"severidad invalida: {self.severidad!r}")
+        if self.estado not in FINDING_STATUSES:
+            raise ValueError(f"estado invalido: {self.estado!r}")
+        if self.rule_version < 1:
+            raise ValueError("rule_version debe ser >= 1")
+        _require_aware(self.creado, "creado")
+
+
+def make_finding_id(rule_id: str, activo: Active) -> str:
+    """Id determinista de hallazgo: regla + hash del activo."""
+    digest = hashlib.sha256(activo.key().encode("utf-8")).hexdigest()[:12]
+    return f"{rule_id}-{digest}"

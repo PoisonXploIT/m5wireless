@@ -5,7 +5,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 
-from ..models import Client, Network, ObservationEvent, utc_now
+from ..models import (
+    Client,
+    Finding,
+    FindingStatus,
+    Network,
+    ObservationEvent,
+    Session,
+    utc_now,
+)
 from .base import AbstractStore, ObservationRow, event_to_observation_row
 
 
@@ -16,6 +24,8 @@ class MemoryStore(AbstractStore):
         self._networks: dict[str, Network] = {}
         self._clients: dict[str, Client] = {}
         self._observations: list[ObservationRow] = []
+        self._sessions: dict[str, Session] = {}
+        self._findings: dict[str, Finding] = {}
 
     # ---- escritura ----
     def upsert_network(self, network: Network, *, at: datetime) -> None:
@@ -162,6 +172,77 @@ class MemoryStore(AbstractStore):
             if net.channel is not None:
                 dist[net.channel] = dist.get(net.channel, 0) + 1
         return dist
+
+    # ---- sesiones y hallazgos ----
+    def save_session(self, session: Session) -> None:
+        self._sessions[session.id] = session
+
+    def get_session(self, session_id: str) -> Session | None:
+        return self._sessions.get(session_id)
+
+    def list_sessions(self, *, estado: str | None = None) -> list[Session]:
+        return [s for s in self._sessions.values() if estado is None or s.estado == estado]
+
+    def save_finding(self, finding: Finding) -> None:
+        existing = self._findings.get(finding.id)
+        if existing is not None:
+            # Re-evaluacion de la misma regla sobre el mismo activo: se actualiza
+            # la evidencia, pero NO se pierde el triaje ya decidido.
+            finding = Finding(
+                id=finding.id,
+                session_id=finding.session_id,
+                rule_id=finding.rule_id,
+                rule_version=finding.rule_version,
+                severidad=finding.severidad,
+                titulo=finding.titulo,
+                activo=finding.activo,
+                evidencia=finding.evidencia,
+                recomendacion=finding.recomendacion,
+                estado=existing.estado,
+                creado=existing.creado,
+            )
+        self._findings[finding.id] = finding
+
+    def get_finding(self, finding_id: str) -> Finding | None:
+        return self._findings.get(finding_id)
+
+    def list_findings(
+        self,
+        *,
+        session_id: str | None = None,
+        severidad: str | None = None,
+        estado: str | None = None,
+    ) -> list[Finding]:
+        out: list[Finding] = []
+        for f in self._findings.values():
+            if session_id is not None and f.session_id != session_id:
+                continue
+            if severidad is not None and f.severidad != severidad:
+                continue
+            if estado is not None and f.estado != estado:
+                continue
+            out.append(f)
+        return out
+
+    def update_finding(self, finding_id: str, *, estado: FindingStatus) -> Finding | None:
+        existing = self._findings.get(finding_id)
+        if existing is None:
+            return None
+        updated = Finding(
+            id=existing.id,
+            session_id=existing.session_id,
+            rule_id=existing.rule_id,
+            rule_version=existing.rule_version,
+            severidad=existing.severidad,
+            titulo=existing.titulo,
+            activo=existing.activo,
+            evidencia=existing.evidencia,
+            recomendacion=existing.recomendacion,
+            estado=estado,
+            creado=existing.creado,
+        )
+        self._findings[finding_id] = updated
+        return updated
 
     # ---- mantenimiento ----
     def prune_older_than(self, days: int, *, reference: datetime | None = None) -> int:

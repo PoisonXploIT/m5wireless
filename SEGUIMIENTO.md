@@ -927,9 +927,24 @@ En el repo solo codigo, tests, `README.md`, `docs/` y este fichero.
   de canal (max 2 redes por canal).
   Nota de gating: `WIFI-WPS` queda aplazada porque ningun parser actual entrega
   el flag WPS (regla: no escribir reglas sobre datos que el pipeline no produce).
-- **Paso 1 (pendiente)**: `models.py` con `Session`/`Finding`, `store/*` con
-  tablas `sessions` y `findings`, `session.py` con `data/sessions/<id>/` y
-  `hashes.json`, sesion viva implicita para no romper CLI/tests/UI.
+- **Paso 1 (COMPLETO, 2026-10-24)**: `models.py` con `Session`, `Finding`,
+  `Active`, `Artifact` y validadores (severidad, estado, datetime aware);
+  `make_session_id` (slug `YYYYMMDD-nombre`) y `make_finding_id`
+  (`rule_id + hash(activo)`, estable entre ejecuciones). `store/base.py`,
+  `memory_store.py` y `sqlite_store.py` con tablas `sessions` y `findings`
+  (CREATE IF NOT EXISTS: migracion automatica sobre una DB antigua) e indices
+  por sesion/severidad/estado. `src/m5wireless/session.py`: `create_session`,
+  `close_session`, `get_live_session` (sesion viva implicita
+  `<fecha>-viva`, compatibilidad con el flujo actual), escritura atomica
+  (tmp + `os.replace`) de `session.json`, `findings.json` y `hashes.json` en
+  `data/sessions/<id>/` con SHA-256 de `artifacts/`. Semantica clave:
+  `save_finding` actualiza evidencia pero **no** pisa el triaje ya decidido.
+  17 tests nuevos en `tests/test_sessions.py` (294 passed, 2 skipped); ruff y
+  mypy --strict sobre `src/m5wireless` limpios. Demo verificada a mano:
+  `data/sessions/20261024-demo/` con `session.json`, `findings.json`,
+  `hashes.json` y `artifacts/` tras cerrar la sesion del fixture.
+- **Paso 2 (pendiente)**: `findings/` con `base.py`, `registry.py`, `engine.py`
+  y una regla por fichero; 10 reglas con fixture y caso negativo.
 
 ## Continuar (sesion siguiente): roadmap de unificacion
 

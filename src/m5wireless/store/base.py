@@ -27,9 +27,12 @@ from datetime import datetime
 from ..models import (
     Client,
     ClientAssociated,
+    Finding,
+    FindingStatus,
     Network,
     NetworkSeen,
     ObservationEvent,
+    Session,
     SourceType,
     StatusEvent,
 )
@@ -126,6 +129,34 @@ class AbstractStore(ABC):
 
     @abstractmethod
     def get_channel_distribution(self) -> dict[int, int]: ...
+
+    # ---- sesiones y hallazgos (Fase A) ----
+    @abstractmethod
+    def save_session(self, session: Session) -> None: ...
+
+    @abstractmethod
+    def get_session(self, session_id: str) -> Session | None: ...
+
+    @abstractmethod
+    def list_sessions(self, *, estado: str | None = None) -> list[Session]: ...
+
+    @abstractmethod
+    def save_finding(self, finding: Finding) -> None: ...
+
+    @abstractmethod
+    def get_finding(self, finding_id: str) -> Finding | None: ...
+
+    @abstractmethod
+    def list_findings(
+        self,
+        *,
+        session_id: str | None = None,
+        severidad: str | None = None,
+        estado: str | None = None,
+    ) -> list[Finding]: ...
+
+    @abstractmethod
+    def update_finding(self, finding_id: str, *, estado: FindingStatus) -> Finding | None: ...
 
     # ---- mantenimiento ----
     @abstractmethod
