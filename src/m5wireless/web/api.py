@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import csv
 import io
-import os
-import string
+import threading
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from ..models import normalize_mac
 from ..store.base import AbstractStore, ObservationRow
 from ..worker.collector import Collector
+from .security import is_within_roots, resolve_browse_roots
 from .schemas import (
     ChannelDistributionResponse,
     ClientRead,
@@ -99,22 +99,51 @@ def health(request: Request, store: AbstractStore = Depends(get_store)) -> Healt
 # ---- estado de conexion ----
 
 
+def _safe_name(raw: object) -> str | None:
+    r"""Nombre del fichero o dispositivo, sin la ruta del operador.
+
+    Una fuente puede devolver una ruta absoluta (`C:\Users\...\demo_scan.log` o
+    `/mnt/sdcard/logs`). Lo que se expone es el nombre: la ruta revela el usuario,
+    el disco y dónde están las capturas (P0.3, no filtrar rutas).
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    return Path(text).name or None
+
+
 @router.get("/api/status", response_model=StatusResponse)
 def status(request: Request) -> StatusResponse:
-    """Estado de la fuente (puerto, baudrate, firmware, conectado/reconectando)."""
+    """Estado de la fuente (puerto, baudrate, firmware, conectado/reconectando).
+
+    `path` y `display` nunca contienen una ruta absoluta: `display` es la etiqueta
+    que enseña la barra superior (`file:demo_scan.log`).
+    """
     collector = getattr(request.app.state, "collector", None)
     if not isinstance(collector, Collector):
         return StatusResponse(
-            source=None, state=None, port=None, baudrate=None, path=None, firmware=None
+            source=None,
+            state=None,
+            port=None,
+            baudrate=None,
+            path=None,
+            display=None,
+            firmware=None,
         )
     info = collector.status()
     baudrate = info.get("baudrate")
+    source = collector.source_type
+    name = _safe_name(info.get("path") or info.get("root") or info.get("port"))
+    display = info.get("display") or (f"{source}:{name}" if source and name else source)
     return StatusResponse(
-        source=collector.source_type,
+        source=source,
         state=str(info["state"]),
         port=cast("str | None", info.get("port")),
         baudrate=int(baudrate) if isinstance(baudrate, int) else None,
-        path=cast("str | None", info.get("path")),
+        path=name,
+        display=cast("str | None", display),
         firmware=str(info["firmware"]),
     )
 
@@ -124,11 +153,16 @@ def status(request: Request) -> StatusResponse:
 # el navegador de ficheros y la importacion quedan restringidos a clientes
 # loopback: el filesystem del anfitrion no se expone a la red.
 # "testclient" es el host que inyecta TestClient de starlette en los tests.
+# Ademas (P0.2), ambas rutas solo trabajan dentro de `M5W_BROWSE_ROOTS`.
 
 _LOCAL_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 _IMPORT_EXTENSIONS = (".pcap", ".cap")
 _IMPORT_MAX_BYTES = 64 * 1024 * 1024  # defensa: un pcap gigante tumbaria la memoria
+_IMPORT_MAX_FILES = 200  # defensa: una carpeta con miles de pcaps colapsaria el worker
 _BROWSE_MAX_ENTRIES = 1000
+# Un solo import a la vez: el parseo es CPU-bound y dos a la vez saturan el
+# collector y el store. `acquire(blocking=False)` = 409 inmediato si ya hay uno.
+_IMPORT_LOCK = threading.Lock()
 
 
 def _require_local(request: Request) -> None:
@@ -137,26 +171,62 @@ def _require_local(request: Request) -> None:
         raise HTTPException(status_code=403, detail="solo accesible desde localhost")
 
 
-def _list_root_entries() -> list[FsEntry]:
-    """Raiz del navegador: unidades de disco en Windows, / en POSIX."""
-    if os.name == "nt":
-        return [
-            FsEntry(name=f"{letter}:\\", path=f"{letter}:/", kind="dir")
-            for letter in string.ascii_uppercase
-            if Path(f"{letter}:/").exists()
-        ]
-    return [FsEntry(name="/", path="/", kind="dir")]
+def _browse_roots(request: Request) -> tuple[Path, ...]:
+    """Raices admitidas, resueltas al construir la app (`create_app`)."""
+    roots = getattr(request.app.state, "browse_roots", None)
+    if roots is None:
+        roots = resolve_browse_roots(getattr(request.app.state, "data_dir", None))
+    return tuple(roots)
+
+
+def _resolve_within_roots(raw: str, roots: tuple[Path, ...]) -> Path:
+    """Resuelve `raw` (relativa o absoluta) y la deja dentro de las raices.
+
+    - 400: ruta vacia, con `..` o con caracteres nulos (traversal).
+    - 403: la ruta resuelta cae fuera de `M5W_BROWSE_ROOTS`. `resolve()` sigue
+      los symlinks, un enlace dentro de `data/` que apunte a `C:/Windows` queda
+      rechazado igual que la ruta directa.
+    """
+    if not raw or not raw.strip():
+        raise HTTPException(status_code=400, detail="path vacio")
+    if "\x00" in raw:
+        raise HTTPException(status_code=400, detail="path invalido")
+    candidate = Path(raw)
+    if any(part == ".." for part in candidate.parts):
+        raise HTTPException(status_code=400, detail="path no puede contener '..'")
+    try:
+        resolved = candidate.resolve()
+    except OSError as exc:  # pragma: no cover - resolve() casi nunca falla
+        raise HTTPException(status_code=400, detail=f"path no resoluble: {exc}") from exc
+    if not is_within_roots(resolved, roots):
+        allowed = ", ".join(str(root) for root in roots) or "ninguna"
+        raise HTTPException(
+            status_code=403,
+            detail=f"ruta fuera de las raices permitidas ({allowed})",
+        )
+    return resolved
 
 
 @router.get("/api/fs/browse", response_model=FsBrowseResponse)
 def browse_fs(request: Request, path: str | None = Query(None)) -> FsBrowseResponse:
-    """Lista un directorio (dirs + pcaps/caps) para el modal importador."""
+    """Lista un directorio (dirs + pcaps/caps) para el modal importador.
+
+    Sin `path` se listan las raices permitidas (ya no las unidades del disco).
+    """
     _require_local(request)
+    roots = _browse_roots(request)
     if not path:
-        return FsBrowseResponse(path=None, parent=None, entries=_list_root_entries())
-    root = Path(path)
+        return FsBrowseResponse(
+            path=None,
+            parent=None,
+            entries=[
+                FsEntry(name=root.name or str(root), path=str(root), kind="dir")
+                for root in roots
+            ],
+        )
+    root = _resolve_within_roots(path, roots)
     if not root.is_dir():
-        raise HTTPException(status_code=404, detail=f"directorio no existe: {path}")
+        raise HTTPException(status_code=404, detail=f"directorio no existe: {root}")
     entries: list[FsEntry] = []
     try:
         children = sorted(root.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
@@ -164,15 +234,21 @@ def browse_fs(request: Request, path: str | None = Query(None)) -> FsBrowseRespo
             if child.name.startswith("."):
                 continue
             try:
-                if child.is_dir():
-                    entries.append(FsEntry(name=child.name, path=str(child), kind="dir"))
+                target = child.resolve()  # symlinks resueltos: si salen, se descartan
+            except OSError:
+                continue
+            if not is_within_roots(target, roots):
+                continue  # symlink que apunta fuera de la raiz: no se ofrece
+            try:
+                if target.is_dir():
+                    entries.append(FsEntry(name=child.name, path=str(target), kind="dir"))
                 elif child.name.lower().endswith(_IMPORT_EXTENSIONS):
                     entries.append(
                         FsEntry(
                             name=child.name,
-                            path=str(child),
+                            path=str(target),
                             kind="file",
-                            size=child.stat().st_size,
+                            size=target.stat().st_size,
                         )
                     )
             except OSError:
@@ -180,8 +256,9 @@ def browse_fs(request: Request, path: str | None = Query(None)) -> FsBrowseRespo
             if len(entries) >= _BROWSE_MAX_ENTRIES:
                 break
     except OSError as exc:
-        raise HTTPException(status_code=404, detail=f"no se pudo leer {path}: {exc}") from exc
-    parent = str(root.parent) if root.parent != root else None
+        raise HTTPException(status_code=404, detail=f"no se pudo leer {root}: {exc}") from exc
+    # No se puede subir por encima de la raiz: el boton "arriba" desaparece.
+    parent = None if any(root == r for r in roots) else str(root.parent)
     return FsBrowseResponse(path=str(root), parent=parent, entries=entries)
 
 
@@ -192,6 +269,9 @@ def import_captures(request: Request, body: ImportRequest) -> ImportResponse:
     `def` (no `async`): FastAPI lo ejecuta en el threadpool, y el parseo de
     pcaps es CPU-bound. Los eventos entran por `collector.submit_events`, asi
     que llegan a store + SSE igual que los de una fuente binaria.
+
+    Limites (P0.2): solo rutas dentro de `M5W_BROWSE_ROOTS`, maximo 200 ficheros
+    por import y un import concurrente (409 si ya va uno).
     """
     _require_local(request)
     collector = getattr(request.app.state, "collector", None)
@@ -199,9 +279,32 @@ def import_captures(request: Request, body: ImportRequest) -> ImportResponse:
         raise HTTPException(
             status_code=409, detail="import requiere el servidor con collector en marcha"
         )
-    target = Path(body.path)
+    target = _resolve_within_roots(body.path, _browse_roots(request))
     if not target.exists():
-        raise HTTPException(status_code=404, detail=f"ruta no existe: {body.path}")
+        raise HTTPException(status_code=404, detail=f"ruta no existe: {target}")
+
+    if target.is_dir():
+        candidates = [
+            path
+            for path in sorted(target.rglob("*"))
+            if path.is_file()
+            and path.name.lower().endswith(_IMPORT_EXTENSIONS)
+            and is_within_roots(path.resolve(), _browse_roots(request))
+        ]
+    elif target.name.lower().endswith(_IMPORT_EXTENSIONS):
+        candidates = [target]
+    else:
+        raise HTTPException(status_code=422, detail="extension no soportada (solo .pcap/.cap)")
+    if len(candidates) > _IMPORT_MAX_FILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"demasiados ficheros ({len(candidates)}); maximo {_IMPORT_MAX_FILES} por import",
+        )
+    if not candidates:
+        return ImportResponse(files=0, events=0, errors=0, messages=[])
+
+    if not _IMPORT_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="ya hay una importacion en curso")
 
     from ..parser.pcap import PcapParseError, PcapParser
 
@@ -228,14 +331,11 @@ def import_captures(request: Request, body: ImportRequest) -> ImportResponse:
         counts["events"] += len(events)
         collector.submit_events(events)
 
-    if target.is_dir():
-        for path in sorted(target.rglob("*")):
-            if path.is_file() and path.name.lower().endswith(_IMPORT_EXTENSIONS):
-                ingest(path)
-    elif target.name.lower().endswith(_IMPORT_EXTENSIONS):
-        ingest(target)
-    else:
-        raise HTTPException(status_code=422, detail="extension no soportada (solo .pcap/.cap)")
+    try:
+        for path in candidates:
+            ingest(path)
+    finally:
+        _IMPORT_LOCK.release()
     return ImportResponse(
         files=counts["files"],
         events=counts["events"],

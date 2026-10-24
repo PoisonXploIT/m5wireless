@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +53,7 @@ def test_status_without_collector(client: TestClient) -> None:
         "port": None,
         "baudrate": None,
         "path": None,
+        "display": None,
         "firmware": None,
     }
 
@@ -65,8 +68,27 @@ def test_status_with_file_collector(seeded_store: MemoryStore, marauder_log_path
     body = res.json()
     assert body["source"] == "file"
     assert body["state"] in ("esperando", "reproduciendo")
-    assert body["path"] == str(marauder_log_path)
+    # P0.3: la API no filtra la ruta absoluta del operador, solo el nombre.
+    assert body["path"] == marauder_log_path.name
+    assert body["display"] == f"file:{marauder_log_path.name}"
     assert body["firmware"] == "marauder"
+    assert "\\" not in json.dumps(body) and "C:\\" not in json.dumps(body)
+
+
+def test_status_no_filtra_la_ruta_absoluta_del_log(seeded_store: MemoryStore, tmp_path: Path) -> None:
+    """Aunque el operador pase una ruta absoluta, la respuesta va sin ruta.
+
+    Es el caso de la demo: `--source file --log-path data/demo_scan.log`.
+    """
+    log = tmp_path / "demo_scan.log"
+    log.write_text("2026-10-24T10:00:00Z,AP,Test,aa:bb:cc:dd:ee:ff,-50\n", encoding="utf-8")
+    collector = Collector(FileSource(log), get_parser("auto"), seeded_store, source_type="file")
+    app = create_app(seeded_store, collector=collector, session_token=TEST_TOKEN)
+    with auth_client(app) as test_client:
+        body = test_client.get("/api/status").json()
+    text = json.dumps(body)
+    assert body["display"] == "file:demo_scan.log"
+    assert str(log) not in text and str(tmp_path) not in text
 
 
 # ---- / ----

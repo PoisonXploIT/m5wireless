@@ -89,6 +89,8 @@ class StatusResponse(BaseModel):
     - `state`: conectado / reconectando / esperando / reproduciendo (file).
     - `port`/`baudrate`: solo con fuente serial; `path`: solo con file.
     - `firmware`: el parser configurado (auto = composite).
+    - `display`: etiqueta corta para la barra superior, `file:demo_scan.log`.
+      `path` es el nombre del fichero, no su ruta: nunca una ruta absoluta.
     """
 
     source: str | None
@@ -96,6 +98,7 @@ class StatusResponse(BaseModel):
     port: str | None
     baudrate: int | None
     path: str | None
+    display: str | None
     firmware: str | None
 
 

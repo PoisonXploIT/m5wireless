@@ -1,12 +1,14 @@
-"""Tests de seguridad P0.1: validacion de `Host` y token de sesion.
+"""Tests de seguridad P0.1, P0.2 y P0.3: `Host`, token, raices y cabeceras.
 
-Cubre la aceptacion del plan (PLAN-MEJORA-2026-10-23, P0.1):
+Cubre la aceptacion del plan (PLAN-MEJORA-2026-10-23):
 
 - `Host` ajeno (DNS rebinding) -> 403.
 - `/api/*` sin sesion -> 401; con cookie `m5w_ui` o con `X-M5W-Token` -> 200.
 - El SSE (`/api/events`) sin sesion -> 401 (se corta antes de abrir el stream).
 - La cookie se emite en `/` y `/network` con `HttpOnly` y `SameSite=Strict`.
 - El token se lee de `M5W_UI_TOKEN` o de `<data_dir>/.ui_token` (permisos 0600).
+- P0.3: CSP, `nosniff`, `Referrer-Policy`, `X-Frame-Options` y `Permissions-Policy`
+  en todas las respuestas, incluidos los errores y el SSE.
 """
 
 from __future__ import annotations
@@ -127,6 +129,73 @@ def test_static_assets_no_require_session() -> None:
     """El CSS/JS son estaticos y no exponen datos: basta con el Host validado."""
     client = TestClient(_app(), base_url=LOCAL)
     assert client.get("/static/css/style.css").status_code == 200
+
+
+# ---- cabeceras de seguridad (P0.3) ----
+
+
+EXPECTED_HEADERS = {
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "x-frame-options": "DENY",
+}
+
+
+def test_paginas_y_assets_llevan_las_cabeceras() -> None:
+    client = TestClient(_app(), base_url=LOCAL)
+    for path in ("/", "/network", "/static/css/style.css", "/static/js/dashboard.js"):
+        res = client.get(path)
+        assert res.status_code == 200, path
+        for name, value in EXPECTED_HEADERS.items():
+            assert res.headers.get(name) == value, f"{path} sin {name}"
+        assert "Permissions-Policy" in res.headers, path
+        csp = res.headers["Content-Security-Policy"]
+        assert "default-src 'self'" in csp
+        assert "script-src 'self'" in csp
+        assert "style-src 'self' 'unsafe-inline'" in csp
+        assert "frame-ancestors 'none'" in csp
+
+
+def test_los_errores_del_middleware_tambien_llevan_cabeceras() -> None:
+    """Un 403/401 generado por el propio middleware no se escapa sin endurecer."""
+    client = TestClient(_app(), base_url=LOCAL, headers={"Host": "rebind.example"})
+    res = client.get("/api/networks")
+    assert res.status_code == 403
+    assert res.headers["X-Content-Type-Options"] == "nosniff"
+    assert res.headers["X-Frame-Options"] == "DENY"
+    assert res.headers["Referrer-Policy"] == "no-referrer"
+    client2 = TestClient(_app(), base_url=LOCAL)
+    res401 = client2.get("/api/health")
+    assert res401.status_code == 401
+    assert res401.headers["Content-Security-Policy"].startswith("default-src 'self'")
+
+
+def test_api_autenticada_lleva_cabeceras() -> None:
+    client = TestClient(_app(), base_url=LOCAL, headers={"X-M5W-Token": TOKEN})
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    assert res.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Permissions-Policy" in res.headers
+
+
+def test_csp_no_permite_scripts_externos_ni_framing() -> None:
+    csp = TestClient(_app(), base_url=LOCAL).get("/").headers["Content-Security-Policy"]
+    assert "http://" not in csp and "https://" not in csp
+    assert "unsafe-eval" not in csp
+    script_src = next(part for part in csp.split(";") if "script-src" in part).strip()
+    assert script_src == "script-src 'self'"
+    assert "object-src 'none'" in csp
+    assert "base-uri 'self'" in csp
+
+
+def test_no_hay_rutas_absolutas_en_el_html_de_la_cabecera() -> None:
+    """El HTML de `/` y `/network` no puede filtrar la ruta del disco del operador."""
+    client = TestClient(_app(), base_url=LOCAL)
+    for path in ("/", "/network"):
+        html = client.get(path).text
+        assert "demo_scan.log" not in html or "file:demo_scan.log" in html
+        for marcador in ("C:\\Users\\", "C:/Users/", str(Path(__file__))):
+            assert marcador not in html, f"{path} filtra la ruta {marcador}"
 
 
 # ---- resolucion del token ----

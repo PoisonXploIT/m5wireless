@@ -12,6 +12,9 @@
 - Seguridad (P0.1): `SecurityMiddleware` valida el `Host` (solo loopback) y
   exige el token de sesion en `/api/*`; la cookie `m5w_ui` se siembra en `/`
   y `/network`. Ver `web/security.py`.
+- Seguridad (P0.3): `SecurityHeadersMiddleware` añade CSP, `nosniff`,
+  `Referrer-Policy`, `X-Frame-Options` y `Permissions-Policy` a todas las
+  respuestas, incluidos los errores y el SSE.
 """
 
 from __future__ import annotations
@@ -28,7 +31,13 @@ from fastapi.staticfiles import StaticFiles
 
 from ..store.base import AbstractStore
 from .api import router as api_router
-from .security import SecurityMiddleware, resolve_allowed_hosts, resolve_session_token
+from .security import (
+    SecurityHeadersMiddleware,
+    SecurityMiddleware,
+    resolve_allowed_hosts,
+    resolve_browse_roots,
+    resolve_session_token,
+)
 from .sse import EventHub
 from .sse import router as sse_router
 
@@ -89,6 +98,7 @@ def create_app(
     session_token: str | None = None,
     data_dir: Path | None = None,
     allowed_hosts: Iterable[str] | None = None,
+    browse_roots: Iterable[str] | None = None,
 ) -> FastAPI:
     """Construye la app.
 
@@ -99,6 +109,8 @@ def create_app(
       con `resolve_session_token(data_dir)` (env `M5W_UI_TOKEN`, fichero
       `.ui_token` en `data_dir`, o generado en memoria).
     - `allowed_hosts`: hosts admitidos ademas del loopback.
+    - `browse_roots`: raices navegables/importables (`M5W_BROWSE_ROOTS`). Sin
+      declaracion, `data_dir` + perfil del usuario (ver `web/security.py`).
     """
     hub = EventHub()
 
@@ -138,13 +150,18 @@ def create_app(
     token = session_token if session_token is not None else resolve_session_token(data_dir)
     # Anadido despues del de cache: va primero (es el mas externo), asi un Host
     # ajeno o una llamada sin sesion se rechazan antes de tocar el store.
+    # En Starlette el ULTIMO middleware añadido es el mas externo. Las cabeceras
+    # de seguridad van las ultimas para envolver todo, incluidos los 401/403 que
+    # genera `SecurityMiddleware` y el streaming del SSE.
     app.add_middleware(
         SecurityMiddleware,
         session_token=token,
         allowed_hosts=resolve_allowed_hosts(allowed_hosts),
     )
     app.add_middleware(_NoCacheMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.state.session_token = token
+    app.state.browse_roots = resolve_browse_roots(data_dir, browse_roots)
     app.state.store = store
     app.state.hub = hub
     app.state.collector = collector

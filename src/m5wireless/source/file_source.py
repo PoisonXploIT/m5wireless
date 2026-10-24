@@ -31,7 +31,16 @@ class FileSource(AbstractSource):
         self._state = "esperando"
 
     def status(self) -> dict[str, object]:
-        return {"state": self._state, "path": str(self._path)}
+        r"""Estado para el dashboard: solo el nombre del fichero, nunca la ruta.
+
+        `path` es la ruta que paso el operador (puede ser absoluta, p. ej.
+        `C:\Users\Sammi\data\demo_scan.log`). Lo que se muestra al usuario es
+        `file:demo_scan.log`: el nombre. Filtrar la ruta absoluta no es un detalle
+        estético: revela el usuario, la estructura del disco y donde están los
+        pcaps (P0.3).
+        """
+        name = self._path.name
+        return {"state": self._state, "path": name, "display": f"file:{name}"}
 
     async def start(self, callback: LineCallback) -> None:
         self._running = True

@@ -1,6 +1,6 @@
-"""Seguridad de la superficie web (P0.1): `Host` validado y token de sesion.
+"""Seguridad de la superficie web (P0.1, P0.2 y P0.3): `Host`, token, raices y cabeceras.
 
-Dos controles, en un middleware ASGI puro (no `BaseHTTPMiddleware`: bufferiza
+Cuatro controles, en middleware ASGI puro (no `BaseHTTPMiddleware`: bufferiza
 el cuerpo y rompería el streaming de `/api/events`):
 
 1. **`Host`**: solo loopback (`localhost`, `127.0.0.1`, `::1`) o los hosts que
@@ -13,6 +13,19 @@ el cuerpo y rompería el streaming de `/api/events`):
    `/network`) o en la cabecera `X-M5W-Token` para clientes de script. El token
    sale de `M5W_UI_TOKEN` o de `<data_dir>/.ui_token` (creado con 0600); sin
    `data_dir` se genera uno efimero en memoria.
+
+3. **Raices de ficheros** (P0.2): el navegador de capturas (`/api/fs/browse`) y el
+   importador (`/api/import`) solo trabajan dentro de `M5W_BROWSE_ROOTS` (por defecto
+   `data/` y el perfil del usuario). La ruta se resuelve (symlinks incluidos) y se
+   compara con `is_relative_to`; una ruta con `..` es 400 y una ruta fuera de la raiz
+   es 403.
+
+4. **Cabeceras de respuesta** (P0.3): CSP, `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` y `Permissions-Policy`
+   en TODAS las respuestas (paginas, assets, API y errores del propio middleware).
+   El servidor escucha en 0.0.0.0 por defecto: sin estas cabeceras, una pagina
+   externa podria incrustar el dashboard (`frame-ancestors`) o sniffar un HTML
+   servido como `text/plain`.
 
 El HTML de las paginas no exige token: es solo la plantilla del dashboard. Los
 datos, que son lo sensible, estan detras de `/api/`.
@@ -33,6 +46,36 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 COOKIE_NAME = "m5w_ui"
 TOKEN_HEADER = "X-M5W-Token"
 TOKEN_FILENAME = ".ui_token"
+BROWSE_ROOTS_ENV = "M5W_BROWSE_ROOTS"
+
+# CSP: el dashboard no carga scripts externos; el CSS se referencia por fichero y
+# hay algún `style="..."` inline en las plantillas, de ahí el 'unsafe-inline' de
+# style-src. `script-src 'self'` sin inline: el JS vive en /static/js.
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+# (nombre, valor) de las cabeceras endurecidas. `Permissions-Policy` apaga las
+# APIs de navegador que este dashboard no usa (camara, micro, geolocalizacion...).
+SECURITY_HEADERS: tuple[tuple[str, bytes], ...] = (
+    ("content-security-policy", CSP.encode("latin-1")),
+    ("x-content-type-options", b"nosniff"),
+    ("referrer-policy", b"no-referrer"),
+    ("x-frame-options", b"DENY"),
+    (
+        "permissions-policy",
+        b"camera=(), microphone=(), geolocation=(), interest-topic=(), "
+        b"payment=(), usb=(), sensor=(), autoplay=(), storage=()",
+    ),
+)
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # Rutas que emiten la cookie de sesion (el navegador entra por aqui).
@@ -97,6 +140,45 @@ def resolve_session_token(data_dir: Path | None) -> str:
     return token
 
 
+def resolve_browse_roots(
+    data_dir: Path | None = None, extra: Iterable[str] | None = None
+) -> tuple[Path, ...]:
+    """Raices admitidas por `/api/fs/browse` y `/api/import`.
+
+    Orden: `M5W_BROWSE_ROOTS` (separado por comas) y `create_app(browse_roots=...)`;
+    si el operador no declara ninguna, las raices por defecto son el `data_dir`
+    (donde viven los pcaps y artefactos propios) y el perfil del usuario. Las rutas
+    relativas se resuelven contra el directorio de trabajo. Se descartan las raices
+    inexistentes: una raiz que no existe no puede servir de puerta.
+    """
+    raw = os.environ.get(BROWSE_ROOTS_ENV, "")
+    items = [item.strip() for item in list(extra or ()) + raw.split(",") if item.strip()]
+    if not items:
+        items = [str(data_dir) if data_dir is not None else "data", str(Path.home())]
+    roots: list[Path] = []
+    for item in items:
+        candidate = Path(item)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_dir() and resolved not in roots:
+            roots.append(resolved)
+    return tuple(roots)
+
+
+def is_within_roots(path: Path, roots: Iterable[Path]) -> bool:
+    """`path` (ya resuelto) esta dentro de alguna raiz; los symlinks cuentan.
+
+    `Path.resolve()` sigue los symlinks: un enlace dentro de `data/` que apunte
+    a `C:/Windows` deja de ser `is_relative_to` de la raiz y se rechaza igual
+    que la ruta directa.
+    """
+    return any(path == root or path.is_relative_to(root) for root in roots)
+
+
 def _parse_headers(scope: Scope) -> tuple[str, dict[str, str], str]:
     """Devuelve (host, cookies, token de cabecera) desde los headers ASGI."""
     host = ""
@@ -129,6 +211,34 @@ async def _json_error(send: Send, status: int, detail: str) -> None:
         }
     )
     await send({"type": "http.response.body", "body": body})
+
+
+class SecurityHeadersMiddleware:
+    """Añade las cabeceras de seguridad a TODAS las respuestas HTTP.
+
+    Va el primero (el mas externo), de modo que tambien cubre los 401/403 que
+    genera `SecurityMiddleware` y las respuestas streaming del SSE. No duplica:
+    si el handler ya puso una de esas cabeceras, se conserva la suya.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: MutableMapping[str, Any]) -> None:
+            if message.get("type") == "http.response.start":
+                headers = message.setdefault("headers", [])
+                present = {name.lower() for name, _ in headers}
+                for name, value in SECURITY_HEADERS:
+                    if name not in present:
+                        headers.append((name.encode("ascii"), value))
+            await send(message)
+
+        await self._app(scope, receive, send_with_headers)
 
 
 class SecurityMiddleware:
